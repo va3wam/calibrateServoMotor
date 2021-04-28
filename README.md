@@ -7,10 +7,10 @@ In order to ensure that all Hexapod robots behave the same way we need to follow
 ## Procedure 1. Calibrating the PCA9685 output Frequency
 See [this repo](https://github.com/va3wam/PCA9685_Frequency_Calibration) for details and sample code for this procedure.
 
-The Adafruit library for controlling the PCA9685 module can. Be found [here](https://adafruit.github.io/Adafruit-PWM-Servo-Driver-Library/html/class_adafruit___p_w_m_servo_driver.html)
-
 ## Procedure 2. Calibrating the Servo Motor Angle
 Put the steps for this procedure here.
+
+The Adafruit library for controlling the PCA9685 module can. Be found [here](https://adafruit.github.io/Adafruit-PWM-Servo-Driver-Library/html/class_adafruit___p_w_m_servo_driver.html)
 
 # Wiring
 To follow the instructions in this section it will help to use the following orientations of the boards involved. 
