@@ -1,129 +1,121 @@
-/***************************************************
+/*************************************************** 
   This is an example for our Adafruit 16-channel PWM & Servo driver
-  to calibrate the frequency of the oscillator clock of the PCA9685.
+  Servo test - this will drive 8 servos, one after the other on the
+  first 8 pins of the PCA9685
 
-  CAUTION: DO NOT CONNECT ANY VOLTAGE HIGHER THAN THE BOARD LIMITS.
-  For 3.3V boards, like the ESP8266, remove any 5V input. The setup will
-  feed the voltage back into the board to measure the frequency.
-  KABOEM, SMOKE if you use too much VOLTAGE.
+  Pick one up today in the adafruit shop!
+  ------> http://www.adafruit.com/products/815
+  
+  These drivers use I2C to communicate, 2 pins are required to  
+  interface.
 
-  Connect the PCA9685 with I2C (Ground, VCC, SCL, SCA) and apply
-  voltage on V+. See above not higher than board limits.
-  Connect the signal (yellow pin, PWM) of the PCA9685 to your board:
-  Default is pin 3, last of first block.
-  Default is pin 14 (of your ESP8266).
+  Adafruit invests time and resources providing this open source code, 
+  please support Adafruit and open-source hardware by purchasing 
+  products from Adafruit!
 
-  Formula for prescale to get the targetted frequency (=update_rate) is:
-  prescale = round ( osc_clock / 4096 * update_rate) - 1
-  rewritten: osc_clock = (prescale + 1) * 4096 * update_rate
-  We will measure the real update_rate to assert the real osc_clock.
+  Written by Limor Fried/Ladyada for Adafruit Industries.  
+  BSD license, all text above must be included in any redistribution
+ ****************************************************/
 
-  ***************************************************/
-#include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
 
 // called this way, it uses the default address 0x40
-Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40, Wire);
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 // you can also call it with a different address you want
-//Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40);
+//Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x41);
 // you can also call it with a different address and I2C interface
 //Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40, Wire);
 
-#if (defined(ESP8266) || defined(ESP32))
+// Depending on your servo make, the pulse width min and max may vary, you 
+// want these to be as small/large as possible without hitting the hard stop
+// for max range. You'll have to tweak them as necessary to match the servos you
+// have!
+#define SERVOMIN  150 // This is the 'minimum' pulse length count (out of 4096)
+#define SERVOMAX  600 // This is the 'maximum' pulse length count (out of 4096)
+#define USMIN  600 // This is the rounded 'minimum' microsecond length based on the minimum pulse of 150
+#define USMAX  2400 // This is the rounded 'maximum' microsecond length based on the maximum pulse of 600
+#define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
 
-// Applied frequency in the test: can be changed to get the optimal
-// oscillator calibration for your targetted frequency.
-#define FREQUENCY             49 //  Floating point
+// our servo # counter
+uint8_t servonum = 0;
 
-// CAUTION: ONLY CONNECT server and ESP WITHOUT 5V ON V+ or green breakout supply pins. Use 3.3V on V+
-#define PIN_SERVO_FEEDBACK     3 // Connect Yellow PWM pin, 3 = last on first block
-#define PIN_BOARD_FEEDBACK    14 // 14 => D5 on NodeMCU
-
-uint8_t prescale = 0;
-// loop
-#define INTERVAL   1000  // 1 sec
-int32_t lastEvaluation = 0;
-uint16_t frozenCounter = 0;
-uint16_t countDeviations = 0;
-
-uint32_t totalCounter = 0;
-uint32_t totalTime = 0;   // in millis
-uint32_t realOsciFreq = 0;
-uint32_t multiplier = 4096;
-
-// interrupt
-volatile uint16_t interruptCounter = 0;
-
-ICACHE_RAM_ATTR void handleInterrupt() {
-  interruptCounter++;
-}
-
-void setup() {
+void setup() 
+{
   Serial.begin(115200);
-  Serial.println("PCA9685 Oscillator test");
-
-  // set PCA9685
+  Serial.println("8 channel Servo test!");
   pwm.begin();
-  pwm.setPWMFreq(FREQUENCY);             // Set some frequency
-  pwm.setPWM(PIN_SERVO_FEEDBACK,0,2048); // half of time high, half of time low
-  prescale = pwm.readPrescale();         // read prescale
-  Serial.printf("Target frequency: %u\n", FREQUENCY);
-  Serial.printf("Applied prescale: %u\n", prescale);
-
-  // prepare interrupt on ESP pin
-  pinMode(PIN_BOARD_FEEDBACK, INPUT);
-  attachInterrupt(digitalPinToInterrupt(PIN_BOARD_FEEDBACK), handleInterrupt, RISING);
-
-  // take a breath and reset to zero
+  /*
+   * In theory the internal oscillator (clock) is 25MHz but it really isn't
+   * that precise. You can 'calibrate' this by tweaking this number until
+   * you get the PWM update frequency you're expecting!
+   * The int.osc. for the PCA9685 chip is a range between about 23-27MHz and
+   * is used for calculating things like writeMicroseconds()
+   * Analog servos run at ~50 Hz updates, It is importaint to use an
+   * oscilloscope in setting the int.osc frequency for the I2C PCA9685 chip.
+   * 1) Attach the oscilloscope to one of the PWM signal pins and ground on
+   *    the I2C PCA9685 chip you are setting the value for.
+   * 2) Adjust setOscillatorFrequency() until the PWM update frequency is the
+   *    expected value (50Hz for most ESCs)
+   * Setting the value here is specific to each individual I2C PCA9685 chip and
+   * affects the calculations for the PWM update frequency. 
+   * Failure to correctly set the int.osc value will cause unexpected PWM results
+   */
+  pwm.setOscillatorFrequency(25700500); // Adjusting to hit as close to 50Hz as possibe. 
+                                        // Using Saleae Logic 8 unit outut ranges from
+                                        // 49.72Hz to 50.51Hz with most readings around 50.1Hz.  
+  pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates
   delay(10);
-  interruptCounter = 0;
-  lastEvaluation = millis();
 }
 
-void loop() {
-  if (millis() - lastEvaluation > INTERVAL)
+// You can use this function if you'd like to set the pulse length in seconds
+// e.g. setServoPulse(0, 0.001) is a ~1 millisecond pulse width. It's not precise!
+void setServoPulse(uint8_t n, double pulse) 
+{
+  double pulselength;
+  
+  pulselength = 1000000;   // 1,000,000 us per second
+  pulselength /= SERVO_FREQ;   // Analog servos run at ~60 Hz updates
+  Serial.print(pulselength); Serial.println(" us per period"); 
+  pulselength /= 4096;  // 12 bits of resolution
+  Serial.print(pulselength); Serial.println(" us per bit"); 
+  pulse *= 1000000;  // convert input seconds to us
+  pulse /= pulselength;
+  Serial.println(pulse);
+  pwm.setPWM(n, 0, pulse);
+}
+
+void loop() 
+{
+  // Drive each servo one at a time using setPWM()
+  Serial.println(servonum);
+  for (uint16_t pulselen = SERVOMIN; pulselen < SERVOMAX; pulselen++) 
   {
-    // first freeze counters and adjust for new round
-    frozenCounter = interruptCounter; // first freeze counter
-    interruptCounter -= frozenCounter;
-    lastEvaluation += INTERVAL;
-
-    totalCounter += frozenCounter;
-    totalTime += 1;
-
-    // only print deviations from targetted frequency
-    //if (frozenCounter != FREQUENCY)
-    {
-       multiplier = 4096;
-       realOsciFreq = (prescale + 1) * totalCounter; // first part calcutlation
-       // now follows an ugly hack to have maximum precision in 32 bits
-       while (((realOsciFreq & 0x80000000) == 0) && (multiplier != 1))
-       {
-          realOsciFreq <<= 1;
-          multiplier >>= 1;
-       }
-       realOsciFreq /= totalTime;
-       if (multiplier) realOsciFreq *= multiplier;
-
-       countDeviations++;
-       Serial.printf("%4u", countDeviations);
-       Serial.printf(" Timestamp: %4u ", totalTime);
-       Serial.printf(" Freq: %4u ", frozenCounter);
-       Serial.printf(" Counter: %6u ", totalCounter);
-       Serial.printf(" calc.osci.freq: %9u\n",realOsciFreq);
-    }
+    pwm.setPWM(servonum, 0, pulselen);
+  }
+  delay(500);
+  for (uint16_t pulselen = SERVOMAX; pulselen > SERVOMIN; pulselen--) 
+  {
+    pwm.setPWM(servonum, 0, pulselen);
   }
 
+  delay(500);
+
+  // Drive each servo one at a time using writeMicroseconds(), it's not precise due to calculation rounding!
+  // The writeMicroseconds() function is used to mimic the Arduino Servo library writeMicroseconds() behavior. 
+/*
+  for (uint16_t microsec = USMIN; microsec < USMAX; microsec++) {
+    pwm.writeMicroseconds(servonum, microsec);
+  }
+
+  delay(500);
+  for (uint16_t microsec = USMAX; microsec > USMIN; microsec--) {
+    pwm.writeMicroseconds(servonum, microsec);
+  }
+
+  delay(500);
+
+  servonum++;
+  if (servonum > 7) servonum = 0; // Testing the first 8 servo channels
+*/
 }
-#else
-
-void setup() {
-  Serial.begin(115200);
-  Serial.println("PCA9685 Oscillator test");
-  Serial.println("yet not available for your board."); // please help adapt the code!
-}
-
-void loop() {}
-
-#endif // ESP8266/ESP32
