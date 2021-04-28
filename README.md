@@ -10,7 +10,7 @@ See [this repo](https://github.com/va3wam/PCA9685_Frequency_Calibration) for det
 ## Procedure 2. Calibrating the Servo Motor Angle
 Put the steps for this procedure here.
 
-The Adafruit library for controlling the PCA9685 module can. Be found [here](https://adafruit.github.io/Adafruit-PWM-Servo-Driver-Library/html/class_adafruit___p_w_m_servo_driver.html)
+The Adafruit library for controlling the PCA9685 module can be found [here](https://adafruit.github.io/Adafruit-PWM-Servo-Driver-Library/html/class_adafruit___p_w_m_servo_driver.html)
 
 # Wiring
 To follow the instructions in this section it will help to use the following orientations of the boards involved. 
