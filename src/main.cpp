@@ -17,7 +17,7 @@
   BSD license, all text above must be included in any redistribution
  ****************************************************/
 #include <Wire.h>
-#include <Adafruit_PWMServoDriver.h>
+#include <Adafruit_PWMServoDriver.h> // https://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library
 #include <aaMqtt.h> // Store values that persist past reboot.
 
 /**
@@ -37,14 +37,19 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 // want these to be as small/large as possible without hitting the hard stop
 // for max range. You'll have to tweak them as necessary to match the servos you
 // have!
-#define SERVOMIN  150 // This is the 'minimum' pulse length count (out of 4096)
-#define SERVOMAX  600 // This is the 'maximum' pulse length count (out of 4096)
+// Pulse width = SERVOMAX - SERVOMIN. This is the time (ms) that the signal is high during one period. 
+#define SERVOMIN  205 // This is the 'minimum' pulse length count (out of 4096)
+#define SERVOMAX  410 // This is the 'maximum' pulse length count (out of 4096)
 #define USMIN  600 // This is the rounded 'minimum' microsecond length based on the minimum pulse of 150
 #define USMAX  2400 // This is the rounded 'maximum' microsecond length based on the maximum pulse of 600
-#define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
+#define SERVO_FREQ 50 // Analog servos run at a freq of 50Hz creating a period of (1/50*1000 = 20ms). 
+                      // Can be between 40Hz and 1600Hz. Servo motors tyically use 50Hz.
+#define SERVO_POS_90 410 // setPWM tick count for pulse width that causes servo to move to +90 degrees (~2.0ms).
+#define SERVO_NEG_90 205 // setPWM tick count for pulse width that causes servo to move to -90 degrees (~1.0ms).
+#define SERVO_CENTRE 307 // setPWM tick count for pulse width that causes servo to move to 0 degrees (~1.5ms).
+#define SERVO_START_TICK 0 // setPWM tick count for start of pulse width
 
-// our servo # counter
-uint8_t servonum = 0;
+
 
 // Followed this tutorial: https://diyi0t.com/servo-motor-tutorial-for-arduino-and-esp8266/
 void setup() 
@@ -69,48 +74,30 @@ void setup()
    * affects the calculations for the PWM update frequency. 
    * Failure to correctly set the int.osc value will cause unexpected PWM results
    */
-   pwm.setOscillatorFrequency(25700500); // Adjusting to hit as close to 50Hz as possibe. 
-                                          // Using Saleae Logic 8 unit outut ranges from
-                                          // 49.72Hz to 50.51Hz with most readings around 50.1Hz.  
-   pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates
+   pwm.setOscillatorFrequency(25700500); // Adjusting to hit as close to 50Hz as possible. 
+                                         // Using Saleae Logic 8 unit outut ranges from
+                                         // 49.72Hz to 50.51Hz with most readings around 50.1Hz. 
+                                         // Think of tjs as the fine adjust setting. 
+   pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates. THis is the course adjust.
    delay(10);
    Serial.println("<setup> End of setup");
 }
 
 char input;
 
+uint8_t servonum = 1; // Which servo to control (0-15)
 void loop() 
 {
-  // Drive each servo one at a time using setPWM()
-//  Serial.println(servonum);
-
-  for (uint16_t pulselen = SERVOMIN; pulselen < SERVOMAX; pulselen++) 
-  {
-    pwm.setPWM(servonum, 0, pulselen);
-  }
-  delay(500);
-  for (uint16_t pulselen = SERVOMAX; pulselen > SERVOMIN; pulselen--) 
-  {
-    pwm.setPWM(servonum, 0, pulselen);
-  }
-
-  delay(500);
-
-  // Drive each servo one at a time using writeMicroseconds(), it's not precise due to calculation rounding!
-  // The writeMicroseconds() function is used to mimic the Arduino Servo library writeMicroseconds() behavior. 
-/*
-  for (uint16_t microsec = USMIN; microsec < USMAX; microsec++) {
-    pwm.writeMicroseconds(servonum, microsec);
-  }
-
-  delay(500);
-  for (uint16_t microsec = USMAX; microsec > USMIN; microsec--) {
-    pwm.writeMicroseconds(servonum, microsec);
-  }
-
-  delay(500);
-
-  servonum++;
-  if (servonum > 7) servonum = 0; // Testing the first 8 servo channels
-*/
+   Serial.println("<loop> +90");
+   pwm.setPWM(servonum, SERVO_START_TICK, SERVO_POS_90);
+   delay(1000);
+   Serial.println("<loop> 0");
+   pwm.setPWM(servonum, SERVO_START_TICK, SERVO_CENTRE);
+   delay(1000);
+   Serial.println("<loop> -90");
+   pwm.setPWM(servonum, SERVO_START_TICK, SERVO_NEG_90);
+   delay(1000);
+   Serial.println("<loop> 0");
+   pwm.setPWM(servonum, SERVO_START_TICK, SERVO_CENTRE);
+   delay(1000);
 } // loop()
