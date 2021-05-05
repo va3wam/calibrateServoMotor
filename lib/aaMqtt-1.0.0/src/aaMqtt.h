@@ -15,6 +15,7 @@
 #include "freertos/timers.h" // Software Timers. Comes with Platform.io.
 #include <aaNetwork.h> // Store values that persist past reboot.
 #include <aaFlash.h> // Use Flash memory to store values that persist past reboot.
+#include <aaStringQueue.h> // Required for string buffer to hold incoming commands.
 
 /************************************************************************************
  * @section mqttDeclareConstants Declare constants. 
@@ -40,6 +41,7 @@ class aaMqtt // Indicate that we are extending LiquidCrystal_I2C class with our 
       static void publishEvent(int evtId, int evtSev, String evtMsg);
       static void onMqttMessage(char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total);
       static void onMqttPublish(uint16_t packetId);
+      static String getCmd(); // Checks if there is a command in the queue returns the command or "" is there is not. 
    private: 
 }; //class aaMqtt
 

@@ -81,11 +81,8 @@ void setup()
       delay(10);
    } //while     
 
-//   setupSerial(); // Set serial baud rate. 
-//   Serial.begin(115200);
-//  Serial.println("<setup> Start of setup");
   Serial.println("<setup> Calibrating servo min/max values via MQTT commands");
-//  pwm.begin();
+  pwm.begin();
   /*
    * In theory the internal oscillator (clock) is 25MHz but it really isn't
    * that precise. You can 'calibrate' this by tweaking this number until
@@ -102,20 +99,25 @@ void setup()
    * affects the calculations for the PWM update frequency. 
    * Failure to correctly set the int.osc value will cause unexpected PWM results
    */
-//   pwm.setOscillatorFrequency(25700500); // Adjusting to hit as close to 50Hz as possible. 
+   pwm.setOscillatorFrequency(25700500); // Adjusting to hit as close to 50Hz as possible. 
                                          // Using Saleae Logic 8 unit outut ranges from
                                          // 49.72Hz to 50.51Hz with most readings around 50.1Hz. 
                                          // Think of tjs as the fine adjust setting. 
-//   pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates. THis is the course adjust.
-//   delay(10);
+   pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates. THis is the course adjust.
+   delay(10);
    Serial.println("<setup> End of setup");
 }
-
-char input;
 
 uint8_t servonum = 1; // Which servo to control (0-15)
 void loop() 
 {
+   String cmd = mqtt.getCmd();
+   if(cmd != "")
+   {
+      Serial.print("<loop> Process command: ");
+      Serial.println(cmd.toInt());
+      pwm.setPWM(servonum, SERVO_START_TICK, cmd.toInt());
+   } //if
 /*
    Serial.println("<loop> +90");
    pwm.setPWM(servonum, SERVO_START_TICK, SERVO_POS_90);

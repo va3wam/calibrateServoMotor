@@ -46,7 +46,7 @@
  ************************************************************************************/
 static TimerHandle_t mqttReconnectTimer; // Instantiate OS software timer.
 static const char* uniqueName; // Unique name to prefix all topics with.
-volatile const char* globalUniqueName; // Unique name to prefix all topics with.
+//volatile const char* globalUniqueName; // Unique name to prefix all topics with.
 static IPAddress brokerIP; // IP address of broker.
 static uint16_t BROKER_PORT = 1883; // Port used by MQTT broker. 
 static AsyncMqttClient mqttClient; // Instantiate MQTT object.
@@ -54,6 +54,7 @@ static const char*  cmdTopicMQTT = "NOTHING"; // Full path to incoming command t
 static uint8_t MQTT_QOS = 1; // use Quality of Service level 1 or 0? (0 has less overhead).
 static bool _mqttConnected;
 static uint8_t TOPIC_NAME_SIZE = 60; // Size of buffer used to hold topic names
+aaStringQueue cmdQueue; // Instantiate the command queue.
 
 /************************************************************************************
  * @section mqttDefineConstants Define constants. 
@@ -88,7 +89,7 @@ void aaMqtt::connect(IPAddress address, const char* uName)
    _mqttConnected = false;
    brokerIP = address;
    uniqueName = uName; // Prefix for all MQTT topic tree names.
-   globalUniqueName = "test";
+//   globalUniqueName = "test";
    Serial.print("<aaMqtt::connect> Connecting as ");
    Serial.print(uniqueName);
    Serial.print(" to MQTT broker at IP address ");
@@ -252,10 +253,32 @@ void aaMqtt::onMqttMessage(char *topic, char *payload, AsyncMqttClientMessagePro
    Serial.println(total);
    Serial.print("<onMqttMessage>  payload: ");
    Serial.println(payload);
-   String tmp = String(payload).substring(0, len);
+   String tmp = String(payload).substring(0, len); // Used to hold message const.
    Serial.print("<onMqttMessage> Message to process = ");
    Serial.println(tmp);
+   char msg[30]; // Used to hold message converted from const.
+   strcpy(msg, tmp.c_str()); // Convert const char* to char*;
+   cmdQueue.push(msg); // Push message onto FIFO buffer stack.
 } // aaMqtt::onMqttMessage()
+
+/**
+ * @brief Event handler for the ACK from a published message.
+ * @param uint16_t Packet Id of message that was published.
+ =============================================================================*/
+String aaMqtt::getCmd()
+{
+   if(cmdQueue.isEmpty())
+   {
+      return "";
+   } // if
+   else
+   {
+      Serial.println("<setup> Pulling command from the buffer.");
+      char str[cmdQueue.getMaxBufferSize()];
+      cmdQueue.pop(str);
+      return String(str);
+   } // else
+} // aaMqtt::getCmd()
 
 /**
  * @brief Event handler for the ACK from a published message.
