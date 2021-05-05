@@ -46,12 +46,14 @@
  ************************************************************************************/
 static TimerHandle_t mqttReconnectTimer; // Instantiate OS software timer.
 static const char* uniqueName; // Unique name to prefix all topics with.
+volatile const char* globalUniqueName; // Unique name to prefix all topics with.
 static IPAddress brokerIP; // IP address of broker.
 static uint16_t BROKER_PORT = 1883; // Port used by MQTT broker. 
 static AsyncMqttClient mqttClient; // Instantiate MQTT object.
 static const char*  cmdTopicMQTT = "NOTHING"; // Full path to incoming command topic from MQTT broker.
 static uint8_t MQTT_QOS = 1; // use Quality of Service level 1 or 0? (0 has less overhead).
 static bool _mqttConnected;
+static uint8_t TOPIC_NAME_SIZE = 60; // Size of buffer used to hold topic names
 
 /************************************************************************************
  * @section mqttDefineConstants Define constants. 
@@ -86,6 +88,7 @@ void aaMqtt::connect(IPAddress address, const char* uName)
    _mqttConnected = false;
    brokerIP = address;
    uniqueName = uName; // Prefix for all MQTT topic tree names.
+   globalUniqueName = "test";
    Serial.print("<aaMqtt::connect> Connecting as ");
    Serial.print(uniqueName);
    Serial.print(" to MQTT broker at IP address ");
@@ -109,20 +112,20 @@ void aaMqtt::onMqttConnect(bool sessionPresent)
 {
    Serial.print("<aaMqtt::onMqttConnect> Connected to MQTT. Session present = ");
    Serial.println(sessionPresent);
-   char buf[30];
+   char buf[TOPIC_NAME_SIZE];
    const char* topic = "/commands";
-   cmdTopicMQTT = uniqueName;
-   Serial.print("<aaMqtt::onMqttConnect> uniqueName = "); Serial.println(cmdTopicMQTT);
+   Serial.print("<aaMqtt::onMqttConnect> uniqueName = "); Serial.println(uniqueName);
    strcpy(buf, uniqueName);
    strcat(buf, topic);   
    cmdTopicMQTT = buf;   
+   Serial.print("<aaMqtt::onMqttConnect> Subscribe to "); Serial.println(cmdTopicMQTT);
    uint16_t packetIdSub = mqttClient.subscribe(cmdTopicMQTT, MQTT_QOS); // QOS can be 0,1 or 2. controlled by MQTTQos parameter
    Serial.print("<aaMqtt::onMqttConnect> Subscribing to "); Serial.print(cmdTopicMQTT);
    Serial.print(" at a QOS of "); Serial.print(MQTT_QOS);
    Serial.print(" with a packetId of "); Serial.println(packetIdSub);
    _mqttConnected = true; // Flag that a broker connection now exists.
-   publishMQTT(CHECKIN_MQTT_TOPIC,uniqueName); // Checkin with unique name.
-   Serial.println("<aaMqtt::onMqttConnect> Send checkin message to broker"); 
+   Serial.println("<aaMqtt::onMqttConnect> Send checkin message to broker."); 
+   publishMQTT(CHECKIN_MQTT_TOPIC, uniqueName); // Checkin with unique name.
 } // aaMqtt::onMqttConnect()
 
 /**
@@ -195,7 +198,7 @@ void aaMqtt::onMqttUnsubscribe(uint16_t packetId)
  =============================================================================*/
 bool aaMqtt::publishMQTT(const char* topic, const char* msg)
 {
-   char fullTopic[30] = "";
+   char fullTopic[TOPIC_NAME_SIZE] = "";
    strcpy(fullTopic,TOP_OF_TREE); // Move vendor name into full topic name.
    strcat(fullTopic,topic); // Append topic into full topic name.
 

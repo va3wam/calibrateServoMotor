@@ -27,7 +27,7 @@ enum signalStrength
 
 /// Max size of unique network name of this device on the network.  
 /// @ingroup globalVariables
-static const int8_t HOST_NAME_SIZE = 20; 
+static const int8_t HOST_NAME_SIZE = 40; 
 
 /************************************************************************************
  * @class Manage wifi connection to Access Point.
