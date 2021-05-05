@@ -48,6 +48,27 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define SERVO_NEG_90 205 // setPWM tick count for pulse width that causes servo to move to -90 degrees (~1.0ms).
 #define SERVO_CENTRE 307 // setPWM tick count for pulse width that causes servo to move to 0 degrees (~1.5ms).
 #define SERVO_START_TICK 0 // setPWM tick count for start of pulse width
+#define PIN_SERVO_FEEDBACK     0 // Connect orange PWM pin, 0 = first on first block
+// #define PIN_BOARD_FEEDBACK    14 // 14 => D5 on NodeMCU
+
+const byte interruptPin = 14; // GPIO14 is physical pin 11 on 30 pin Devkit V1 board.
+volatile int interruptCounter = 0;
+int numberOfInterrupts = 0;
+volatile long last, now; 
+ 
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+
+/**
+ * @brief ISR.
+ * =================================================================================*/
+void IRAM_ATTR handleInterrupt() 
+{
+  portENTER_CRITICAL_ISR(&mux);
+  interruptCounter++;
+  last = now;
+  now = millis();
+  portEXIT_CRITICAL_ISR(&mux);
+} // handleInterrupt()
 
 /**
  * @brief Initialize the serial output with the specified baud rate measured in bits 
@@ -60,7 +81,9 @@ void setupSerial()
    while (!Serial); // Wait for Serial port to be ready.
 } //setupSerial()
 
-// Followed this tutorial: https://diyi0t.com/servo-motor-tutorial-for-arduino-and-esp8266/
+/**
+ * @brief Followed this tutorial: https://diyi0t.com/servo-motor-tutorial-for-arduino-and-esp8266/
+ * =================================================================================*/
 void setup() 
 {
    char uniqueName[HOST_NAME_SIZE]; // Character array that holds unique name. 
@@ -81,8 +104,8 @@ void setup()
       delay(10);
    } //while     
 
-  Serial.println("<setup> Calibrating servo min/max values via MQTT commands");
-  pwm.begin();
+   Serial.println("<setup> Calibrating servo min/max values via MQTT commands");
+   pwm.begin();
   /*
    * In theory the internal oscillator (clock) is 25MHz but it really isn't
    * that precise. You can 'calibrate' this by tweaking this number until
@@ -99,16 +122,27 @@ void setup()
    * affects the calculations for the PWM update frequency. 
    * Failure to correctly set the int.osc value will cause unexpected PWM results
    */
+//   uint32_t oscFreq = 25700500; // Variable that is set to the osc freq for the PCA9865.
    pwm.setOscillatorFrequency(25700500); // Adjusting to hit as close to 50Hz as possible. 
+//   pwm.setOscillatorFrequency(oscFreq); // Adjusting to hit as close to 50Hz as possible. 
                                          // Using Saleae Logic 8 unit outut ranges from
                                          // 49.72Hz to 50.51Hz with most readings around 50.1Hz. 
                                          // Think of tjs as the fine adjust setting. 
-   pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates. THis is the course adjust.
+   pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates. This is the course adjust.
+   pwm.setPWM(PIN_SERVO_FEEDBACK,0,2048); // half of time high, half of time low
    delay(10);
+   now = millis();
+//   pinMode(interruptPin, INPUT_PULLUP);
+   pinMode(interruptPin, INPUT);
+   attachInterrupt(digitalPinToInterrupt(interruptPin), handleInterrupt, RISING);
    Serial.println("<setup> End of setup");
-}
+} // setup()
 
 uint8_t servonum = 1; // Which servo to control (0-15)
+
+/**
+ * @brief Main loop.
+ * =================================================================================*/
 void loop() 
 {
    String cmd = mqtt.getCmd();
@@ -118,18 +152,19 @@ void loop()
       Serial.println(cmd.toInt());
       pwm.setPWM(servonum, SERVO_START_TICK, cmd.toInt());
    } //if
-/*
-   Serial.println("<loop> +90");
-   pwm.setPWM(servonum, SERVO_START_TICK, SERVO_POS_90);
-   delay(1000);
-   Serial.println("<loop> 0");
-   pwm.setPWM(servonum, SERVO_START_TICK, SERVO_CENTRE);
-   delay(1000);
-   Serial.println("<loop> -90");
-   pwm.setPWM(servonum, SERVO_START_TICK, SERVO_NEG_90);
-   delay(1000);
-   Serial.println("<loop> 0");
-   pwm.setPWM(servonum, SERVO_START_TICK, SERVO_CENTRE);
-   delay(1000);
-*/
+  if(interruptCounter > 0)
+  {
+      portENTER_CRITICAL(&mux);
+      interruptCounter--;
+      portEXIT_CRITICAL(&mux);
+      numberOfInterrupts++;
+      Serial.print("Interrupt count = ");
+      Serial.print(numberOfInterrupts);
+      Serial.print("Last diff = ");
+      Serial.print(now-last);
+      Serial.print(" ms or freq of ");
+      Serial.print(1000/(now-last));
+      Serial.println("Hz.");
+
+  } // if
 } // loop()
