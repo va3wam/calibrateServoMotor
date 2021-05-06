@@ -24,7 +24,7 @@ One Period is the complete ON and OFF time of a PWM signal as shown in the above
 Frequency as it relates to PWM, is the number of times per second that we repeat the on and off cycle. Expressed in Hz. 
 The frequency of a PWM signal determines how fast a PWM completes one period. The formulae to calculate the Frequency is ```Frequency = 1/Time Period```. 
 
-<img title="Servo Motor Signalling" alt="PWM Signal" src="/img/pulse-width-modulation-duty-cycle">
+<img title="Servo Motor Signalling" alt="PWM Signal" src="./img/pulse-width-modulation-duty-cycle.gif">
 
 ### How positioning works
 When a pulse is sent to a servo that is less than 1.5 ms, the servo rotates to a position and holds its output shaft some number of degrees counterclockwise from the neutral point. When the pulse is wider than 1.5 ms the opposite occurs. The minimal and maximal widths of pulse that will command the servo to turn to a valid position are functions of each servo. Different brands, and even different servos of the same brand, will have different maxima and minima. Generally, the minimal pulse will be about 1 ms wide, and the maximal pulse will be 2 ms wide.
