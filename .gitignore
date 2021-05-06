@@ -1,32 +1,14 @@
-# Prerequisites
-*.d
+# PlatformIO
+*.pio
+*.pio/build/project.checksum
+*platformio.ini
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# Visual Studio Code
+*.vscode/.browse.c_cpp.db*
+*.vscode/c_cpp_properties.json
+*.vscode/launch.json
+*.vscode/extensions.json
+*.vscode/ipch
 
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
+# Build
+*output.map
