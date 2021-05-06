@@ -48,8 +48,27 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define SERVO_NEG_90 205 // setPWM tick count for pulse width that causes servo to move to -90 degrees (~1.0ms).
 #define SERVO_CENTRE 307 // setPWM tick count for pulse width that causes servo to move to 0 degrees (~1.5ms).
 #define SERVO_START_TICK 0 // setPWM tick count for start of pulse width
-#define PIN_SERVO_FEEDBACK     0 // Connect orange PWM pin, 0 = first on first block
-// #define PIN_BOARD_FEEDBACK    14 // 14 => D5 on NodeMCU
+#define PIN_SERVO_FEEDBACK 0 // Connect orange PWM pin, 0 = first on first block
+
+// Andrew's stepper motor calibration settings
+// Motor Angle Value
+// ----- ----- -----
+// 1     +90   110
+// 1     0     310
+// 1     -90   510
+// -----------------
+// 2     +90   110
+// 2     0     300
+// 2     -90   495
+// -----------------
+// 3     +90   125
+// 3     0     330
+// 3     -90   525
+// -----------------
+// 4     +90   120
+// 4     0     315
+// 4     -90   510
+// Oscillator frequency 25700500
 
 const byte interruptPin = 14; // GPIO14 is physical pin 11 on 30 pin Devkit V1 board.
 volatile int interruptCounter = 0;
