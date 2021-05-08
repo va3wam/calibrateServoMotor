@@ -1,74 +1,74 @@
-/*************************************************** 
-  This is an example for our Adafruit 16-channel PWM & Servo driver
-  Servo test - this will drive 8 servos, one after the other on the
-  first 8 pins of the PCA9685
-
-  Pick one up today in the adafruit shop!
-  ------> http://www.adafruit.com/products/815
-  
-  These drivers use I2C to communicate, 2 pins are required to  
-  interface.
-
-  Adafruit invests time and resources providing this open source code, 
-  please support Adafruit and open-source hardware by purchasing 
-  products from Adafruit!
-
-  Written by Limor Fried/Ladyada for Adafruit Industries.  
-  BSD license, all text above must be included in any redistribution
- ****************************************************/
-#include <Wire.h>
-#include <Adafruit_PWMServoDriver.h> // https://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library
+/******************************************************************************
+ * @file main.cpp
+ *
+ * @mainpage the Aging Apprentice calibrating servo motors 
+ * 
+ * @section intro_sec Introduction
+ *
+ * This is an Arduino sketch that allows you to send MQTT messages to the 
+ * MCU in order to calaibrate your servo motors.
+ *
+ * @section dependencies Dependencies
+ * 
+ * This sketch depends on the following libraries:
+ * - [Arduino.h](https://github.com/espressif/arduino-esp32). This is the 
+ * Arduino core library that comes bundled with PlatformIO.
+ * - [Adafruit_PWMServoDriver.h](https://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library).
+ * This is the library used to control the servo motors via the PCA9865 servo 
+ * motor driver.   
+ * - [aaMqtt.h](https://github.com/theAgingApprentice/aaMqtt).
+ * - [aaNetwork](https://github.com/theAgingApprentice/aaNetwork).
+ * - [aaFlash.h](https://github.com/theAgingApprentice/aaFlash).
+ *
+ * @section author Author(s)
+ *
+ * Written by Old Squire for the Aging Apprentice.
+ *
+ * @section license license
+ *
+ * Copyright 2021 the Aging Apprentice 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to 
+ * deal in the Software without restriction, including without limitation the 
+ * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+ * sell copies of the Software, and to permit persons to whom the Software is 
+ * furnished to do so, subject to the following conditions: The above copyright
+ * notice and this permission notice shall be included in all copies or 
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+ * IN THE SOFTWARE.  
+ *****************************************************************************/
+#include <Wire.h> // I2C communication.
+#include <Adafruit_PWMServoDriver.h> // https://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library.
 #include <aaMqtt.h> // https://github.com/theAgingApprentice/aaMqtt. Store values that persist past reboot.
 
 /**
  * Define global objects.
  * =================================================================================*/
-aaMqtt mqtt; // Explain what this object reference is for. 
+aaMqtt mqtt; // Communicating with the MQTT broker. 
 aaNetwork wifi("calServo"); // Explain what this object reference is for. 
 aaFlash flash; // Non-volatile memory management. 
-// called this way, it uses the default address 0x40
-Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
-// you can also call it with a different address you want
-//Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x41);
-// you can also call it with a different address and I2C interface
-//Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40, Wire);
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40, Wire); // I2C address 0x40 (default) on Wire1.
 
-// Depending on your servo make, the pulse width min and max may vary, you 
-// want these to be as small/large as possible without hitting the hard stop
-// for max range. You'll have to tweak them as necessary to match the servos you
-// have!
-// Pulse width = SERVOMAX - SERVOMIN. This is the time (ms) that the signal is high during one period. 
-#define SERVOMIN  205 // This is the 'minimum' pulse length count (out of 4096)
-#define SERVOMAX  410 // This is the 'maximum' pulse length count (out of 4096)
-#define USMIN  600 // This is the rounded 'minimum' microsecond length based on the minimum pulse of 150
-#define USMAX  2400 // This is the rounded 'maximum' microsecond length based on the maximum pulse of 600
 #define SERVO_FREQ 50 // Analog servos run at a freq of 50Hz creating a period of (1/50*1000 = 20ms). 
                       // Can be between 40Hz and 1600Hz. Servo motors tyically use 50Hz.
-#define SERVO_POS_90 410 // setPWM tick count for pulse width that causes servo to move to +90 degrees (~2.0ms).
-#define SERVO_NEG_90 205 // setPWM tick count for pulse width that causes servo to move to -90 degrees (~1.0ms).
-#define SERVO_CENTRE 307 // setPWM tick count for pulse width that causes servo to move to 0 degrees (~1.5ms).
 #define SERVO_START_TICK 0 // setPWM tick count for start of pulse width
-#define PIN_SERVO_FEEDBACK 0 // Connect orange PWM pin, 0 = first on first block
+#define PIN_SERVO_FEEDBACK 0 // Connect orange PWM pin, 0 = first on first block. Monitor PWM from servo driver. 
 
-// Andrew's stepper motor calibration settings
-// Motor Angle Value
-// ----- ----- -----
-// 1     +90   110
-// 1     0     310
-// 1     -90   510
-// -----------------
-// 2     +90   110
-// 2     0     300
-// 2     -90   495
-// -----------------
-// 3     +90   125
-// 3     0     330
-// 3     -90   525
-// -----------------
-// 4     +90   120
-// 4     0     315
-// 4     -90   510
-// Oscillator frequency 25700500
+// Structure for servo motors
+typedef struct
+{
+   int16_t min;
+   int16_t mid;
+   int16_t max;
+} servoMotorStruct;
+servoMotorStruct servoMotor[4];
 
 const byte interruptPin = 14; // GPIO14 is physical pin 11 on 30 pin Devkit V1 board.
 volatile int interruptCounter = 0;
@@ -78,7 +78,7 @@ volatile long last, now;
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
 /**
- * @brief ISR.
+ * @brief ISR for PWM signal from PCA9685.
  * =================================================================================*/
 void IRAM_ATTR handleInterrupt() 
 {
@@ -107,6 +107,7 @@ void setup()
 {
    char uniqueName[HOST_NAME_SIZE]; // Character array that holds unique name. 
    char *uniqueNamePtr = uniqueName; // Pointer to unique name character array.
+   uint32_t oscFreq; // Oscillator freq of the PCA9865 servo motor driver. Board specific.
    IPAddress brokerIP(192, 168, 2, 21); // IP address of the MQTT broker.
    setupSerial(); // Set serial baud rate. 
    Serial.println("<setup> Start of setup");
@@ -114,6 +115,72 @@ void setup()
    wifi.getUniqueName(uniqueNamePtr);
    Serial.print("<setup> Unique name = ");
    Serial.println(uniqueName);
+   // Stepper motor calibration settings
+   // ==================================
+   // About MIN/MAX settings
+   // Depending on your servo make, the pulse width min and max may vary, you 
+   // want these to be as small/large as possible without hitting the hard stop
+   // for max range. You'll have to tweak them as necessary to match the servos you
+   // have!
+   // 
+   // About oscillator freq setting
+   // =============================
+   // In theory the internal oscillator (clock) is 25MHz but it really isn't
+   // that precise. You can 'calibrate' this by tweaking this number until
+   // you get the PWM update frequency you're expecting!
+   // The int.osc. for the PCA9685 chip is a range between about 23-27MHz and
+   // is used for calculating things like writeMicroseconds()
+   // Analog servos run at ~50 Hz updates, It is importaint to use an
+   // oscilloscope in setting the int.osc frequency for the I2C PCA9685 chip.
+   // 1) Attach the oscilloscope to one of the PWM signal pins and ground on
+   //    the I2C PCA9685 chip you are setting the value for.
+   // 2) Adjust setOscillatorFrequency() until the PWM update frequency is the
+   //    expected value (50Hz for most ESCs)
+   // Setting the value here is specific to each individual I2C PCA9685 chip and
+   // affects the calculations for the PWM update frequency. 
+   // Failure to correctly set the int.osc value will cause unexpected PWM results
+   if(strcmp(uniqueName, "calServoCC50E394F048") == 0) // Andrew's MCU
+   {
+      Serial.println("<setup> Andrews MCU specific settings");
+      servoMotor[0].max = 110; // Servo #1
+      servoMotor[0].mid = 310;
+      servoMotor[0].min = 510;
+      servoMotor[1].max = 110; // Servo #2
+      servoMotor[1].mid = 300;
+      servoMotor[1].min = 495;
+      servoMotor[2].max = 125; // Servo #3
+      servoMotor[2].mid = 330;
+      servoMotor[2].min = 525;
+      servoMotor[3].max = 120; // Servo #4
+      servoMotor[3].mid = 315;
+      servoMotor[3].min = 510;
+      oscFreq = 25700500; // Oscillator. Make function to set automatically.        
+   } // if
+   else // Doug's MCU
+   {
+      Serial.print("<setup> Dougs MCU specific settings");
+      servoMotor[0].max = 110; // Servo #1
+      servoMotor[0].mid = 310;
+      servoMotor[0].min = 510;
+      servoMotor[1].max = 110; // Servo #2
+      servoMotor[1].mid = 300;
+      servoMotor[1].min = 495;
+      servoMotor[2].max = 125; // Servo #3
+      servoMotor[2].mid = 330;
+      servoMotor[2].min = 525;
+      servoMotor[3].max = 120; // Servo #4
+      servoMotor[3].mid = 315;
+      servoMotor[3].min = 510;
+      oscFreq = 25700500; // Oscillator. Make function to set automatically.       
+   } //else
+   if(oscFreq == 25700500)
+   {
+      Serial.println("<setup> Oscillator freq matches.");
+   } // if
+   else
+   {
+      Serial.print("<setup> Oscillator freq DOES NOT match.");
+   } // else
    wifi.cfgToConsole();
    mqtt.connect(brokerIP, uniqueName);
    bool x = false;
@@ -122,36 +189,17 @@ void setup()
       x = mqtt.publishMQTT(HEALTH_MQTT_TOPIC, "This is a test message");
       delay(10);
    } //while     
-
    Serial.println("<setup> Calibrating servo min/max values via MQTT commands");
    pwm.begin();
-  /*
-   * In theory the internal oscillator (clock) is 25MHz but it really isn't
-   * that precise. You can 'calibrate' this by tweaking this number until
-   * you get the PWM update frequency you're expecting!
-   * The int.osc. for the PCA9685 chip is a range between about 23-27MHz and
-   * is used for calculating things like writeMicroseconds()
-   * Analog servos run at ~50 Hz updates, It is importaint to use an
-   * oscilloscope in setting the int.osc frequency for the I2C PCA9685 chip.
-   * 1) Attach the oscilloscope to one of the PWM signal pins and ground on
-   *    the I2C PCA9685 chip you are setting the value for.
-   * 2) Adjust setOscillatorFrequency() until the PWM update frequency is the
-   *    expected value (50Hz for most ESCs)
-   * Setting the value here is specific to each individual I2C PCA9685 chip and
-   * affects the calculations for the PWM update frequency. 
-   * Failure to correctly set the int.osc value will cause unexpected PWM results
-   */
-//   uint32_t oscFreq = 25700500; // Variable that is set to the osc freq for the PCA9865.
-   pwm.setOscillatorFrequency(25700500); // Adjusting to hit as close to 50Hz as possible. 
-//   pwm.setOscillatorFrequency(oscFreq); // Adjusting to hit as close to 50Hz as possible. 
-                                         // Using Saleae Logic 8 unit outut ranges from
-                                         // 49.72Hz to 50.51Hz with most readings around 50.1Hz. 
-                                         // Think of tjs as the fine adjust setting. 
-   pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates. This is the course adjust.
+   pwm.setOscillatorFrequency(oscFreq); // Make function to adjust thiis until the PWM 
+                                        // signal on pin 11 to hit as close to 50Hz as 
+                                        // possible. Using Saleae Logic 8 unit outut 
+                                        // ranges from 49.72Hz to 50.51Hz with most 
+                                        // readings around 50.1Hz. 
+   pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates.  
    pwm.setPWM(PIN_SERVO_FEEDBACK,0,2048); // half of time high, half of time low
    delay(10);
    now = millis();
-//   pinMode(interruptPin, INPUT_PULLUP);
    pinMode(interruptPin, INPUT);
    attachInterrupt(digitalPinToInterrupt(interruptPin), handleInterrupt, RISING);
    Serial.println("<setup> End of setup");
@@ -179,11 +227,10 @@ void loop()
       numberOfInterrupts++;
       Serial.print("Interrupt count = ");
       Serial.print(numberOfInterrupts);
-      Serial.print("Last diff = ");
+      Serial.print(" Last diff = ");
       Serial.print(now-last);
       Serial.print(" ms or freq of ");
       Serial.print(1000/(now-last));
       Serial.println("Hz.");
-
   } // if
 } // loop()
