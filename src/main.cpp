@@ -44,9 +44,11 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.  
  *****************************************************************************/
+#include <Arduino.h> // Arduino Core for ESP32. Comes with Platform.io
 #include <Wire.h> // I2C communication.
 #include <Adafruit_PWMServoDriver.h> // https://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library.
 #include <aaMqtt.h> // https://github.com/theAgingApprentice/aaMqtt. Store values that persist past reboot.
+#include <aaFormat.h> // 
 
 /**
  * Define global objects.
@@ -55,20 +57,22 @@ aaMqtt mqtt; // Communicating with the MQTT broker.
 aaNetwork wifi("calServo"); // Explain what this object reference is for. 
 aaFlash flash; // Non-volatile memory management. 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40, Wire); // I2C address 0x40 (default) on Wire1.
+aaFormat format;
 
 #define SERVO_FREQ 50 // Analog servos run at a freq of 50Hz creating a period of (1/50*1000 = 20ms). 
                       // Can be between 40Hz and 1600Hz. Servo motors tyically use 50Hz.
 #define SERVO_START_TICK 0 // setPWM tick count for start of pulse width
 #define PIN_SERVO_FEEDBACK 0 // Connect orange PWM pin, 0 = first on first block. Monitor PWM from servo driver. 
-
+#define SERVO_START_NUM 1 // First servo cnnected to pin 1
+#define SERVO_CNT 4 // Number of servos connected
 // Structure for servo motors
 typedef struct
 {
-   int16_t min;
-   int16_t mid;
-   int16_t max;
+   long min;
+   long mid;
+   long max;
 } servoMotorStruct;
-servoMotorStruct servoMotor[4];
+servoMotorStruct servoMotor[SERVO_CNT + 1];
 
 const byte interruptPin = 14; // GPIO14 is physical pin 11 on 30 pin Devkit V1 board.
 volatile int interruptCounter = 0;
@@ -99,6 +103,94 @@ void setupSerial()
    Serial.begin(serialBaudRate); // Open a serial connection at specified baud rate. 
    while (!Serial); // Wait for Serial port to be ready.
 } //setupSerial()
+
+/**
+ * @brief Process the incoming command.
+ * =================================================================================*/
+bool processCmd(String payload)
+{
+   String ucPayload = format.stringToUpper(payload);
+   int firstComma = ucPayload.indexOf(",");
+   int secondComma = ucPayload.indexOf(",", firstComma + 1);
+   int lenCmd = firstComma;
+   int lenArg = secondComma - firstComma - 1;
+   int lenVal = ucPayload.length() - secondComma - 1;
+   int cmdStart =  0;
+   int argStart = firstComma + 1;
+   int valStart = secondComma + 1;
+   String cmd = ucPayload.substring(cmdStart, cmdStart + lenCmd);
+   String arg = ucPayload.substring(argStart, argStart + lenArg);
+   String val = ucPayload.substring(valStart, valStart + lenVal);
+
+   Serial.print("<processCmd> Payload length = "); Serial.println(ucPayload.length());
+   Serial.print("<processCmd> Received paylod = "); Serial.println(ucPayload);
+
+   Serial.print("<processCmd> First comma = "); Serial.println(firstComma);
+   Serial.print("<processCmd> Second comma = "); Serial.println(secondComma);
+
+   Serial.print("<processCmd> cmdStart = "); Serial.println(cmdStart);
+   Serial.print("<processCmd> lenCmd = "); Serial.println(lenCmd);
+   Serial.print("<processCmd> cmd = "); Serial.println(cmd);
+
+   Serial.print("<processCmd> argStart = "); Serial.println(argStart);
+   Serial.print("<processCmd> lenArg = "); Serial.println(lenArg);
+   Serial.print("<processCmd> arg = "); Serial.println(arg);
+
+   Serial.print("<processCmd> valStart = "); Serial.println(valStart);
+   Serial.print("<processCmd> lenVal = "); Serial.println(lenVal);
+   Serial.print("<processCmd> val = "); Serial.println(val);
+
+   // If user wants to move one of the servo motors.
+   if(cmd == "SERVO_POS") 
+   {
+      uint8_t servoNumber = arg.toInt();
+      uint16_t servoPosition = val.toInt();
+      Serial.print("<processCmd> Move servo number "); 
+      Serial.print(servoNumber);
+      Serial.print(" to position ");
+      Serial.println(servoPosition);
+      pwm.setPWM(servoNumber, SERVO_START_TICK, servoPosition);      
+      return true;
+   } // if
+
+   if(cmd == "SERVO_ANGLE") 
+   {
+      uint8_t servoNumber = arg.toInt();
+      uint16_t servoPosition = val.toInt();
+      long pulseLength = map(servoPosition, 0, 180, servoMotor[servoNumber].min, servoMotor[servoNumber].max);
+      Serial.print("<processCmd> Requested degrees = "); 
+      Serial.println(servoPosition);
+      Serial.print("<processCmd> Servo min mapped to 0 = "); 
+      Serial.println(servoMotor[servoNumber].min);
+      Serial.print("<processCmd> Servo max mapped to 180 = "); 
+      Serial.println(servoMotor[servoNumber].max);
+      Serial.print("<processCmd> Move servo number "); 
+      Serial.print(servoNumber);
+      Serial.print(" to angle ");
+      Serial.print(servoPosition);
+      Serial.print(" which maps to pulse length ");
+      Serial.println(pulseLength);
+      pwm.setPWM(servoNumber, SERVO_START_TICK, pulseLength);      
+      return true;
+   } // if
+
+   // If user wanats to know the curret frequency of the PWM signal from the PCA9685.
+   if(cmd == "SERVO_GET_FREQ")
+   {
+      Serial.print("<processCmd> Interrupt count = ");
+      Serial.print(numberOfInterrupts);
+      Serial.print(", period = ");
+      Serial.print(now - last);
+      Serial.print(" ms, freq = ");
+      Serial.print(1000 / (now - last));
+      Serial.println("Hz.");
+      return true;
+   } // if
+
+   // If the command sent is unrecognized.
+   Serial.println("<processCmd> Warning - unrecognized command."); 
+   return false;
+} // processCmd()
 
 /**
  * @brief Followed this tutorial: https://diyi0t.com/servo-motor-tutorial-for-arduino-and-esp8266/
@@ -142,48 +234,57 @@ void setup()
    if(strcmp(uniqueName, "calServoCC50E394F048") == 0) // Andrew's MCU
    {
       Serial.println("<setup> Andrews MCU specific settings");
-      servoMotor[0].max = 110; // Servo #1
-      servoMotor[0].mid = 310;
-      servoMotor[0].min = 510;
-      servoMotor[1].max = 110; // Servo #2
-      servoMotor[1].mid = 300;
-      servoMotor[1].min = 495;
-      servoMotor[2].max = 125; // Servo #3
-      servoMotor[2].mid = 330;
-      servoMotor[2].min = 525;
-      servoMotor[3].max = 120; // Servo #4
-      servoMotor[3].mid = 315;
-      servoMotor[3].min = 510;
-      oscFreq = 25700500; // Oscillator. Make function to set automatically.        
+      oscFreq = 25700500; // PWM output via PWM0 on PCA9685. Make function to set automatically. 
+      servoMotor[1].min = 110; // Servo #1
+      servoMotor[1].mid = 310;
+      servoMotor[1].max = 510;
+      servoMotor[2].min = 110; // Servo #2
+      servoMotor[2].mid = 300;
+      servoMotor[2].max = 495;
+      servoMotor[3].min = 125; // Servo #3
+      servoMotor[3].mid = 330;
+      servoMotor[3].max = 525;
+      servoMotor[4].min = 120; // Servo #4
+      servoMotor[4].mid = 315;
+      servoMotor[4].max = 510;
    } // if
    else // Doug's MCU
    {
       Serial.print("<setup> Dougs MCU specific settings");
-      servoMotor[0].max = 110; // Servo #1
-      servoMotor[0].mid = 310;
-      servoMotor[0].min = 510;
-      servoMotor[1].max = 110; // Servo #2
-      servoMotor[1].mid = 300;
-      servoMotor[1].min = 495;
-      servoMotor[2].max = 125; // Servo #3
-      servoMotor[2].mid = 330;
-      servoMotor[2].min = 525;
-      servoMotor[3].max = 120; // Servo #4
-      servoMotor[3].mid = 315;
-      servoMotor[3].min = 510;
-      oscFreq = 25700500; // Oscillator. Make function to set automatically.       
+      oscFreq = 25700500; // PWM output via PWM0 on PCA9685. Make function to set automatically. 
+      servoMotor[1].min = 110; // Servo #1
+      servoMotor[1].mid = 310;
+      servoMotor[1].max = 510;
+      servoMotor[2].min = 110; // Servo #2
+      servoMotor[2].mid = 300;
+      servoMotor[2].max = 495;
+      servoMotor[3].min = 125; // Servo #3
+      servoMotor[3].mid = 330;
+      servoMotor[3].max = 525;
+      servoMotor[4].min = 120; // Servo #4
+      servoMotor[4].mid = 315;
+      servoMotor[4].max = 510;
    } //else
+
+   for (int i = SERVO_START_NUM; i < SERVO_CNT; i++)
+   {
+      Serial.print("<setup> servo"); Serial.print(i);
+      Serial.print(" Min = "); Serial.print(servoMotor[i].min);
+      Serial.print(" Max = "); Serial.println(servoMotor[i].max);
+   }  // for 
+
    if(oscFreq == 25700500)
    {
       Serial.println("<setup> Oscillator freq matches.");
    } // if
    else
    {
-      Serial.print("<setup> Oscillator freq DOES NOT match.");
+      Serial.println("<setup> Oscillator freq DOES NOT match.");
    } // else
    wifi.cfgToConsole();
    mqtt.connect(brokerIP, uniqueName);
    bool x = false;
+
    while(x == false)
    {
       x = mqtt.publishMQTT(HEALTH_MQTT_TOPIC, "This is a test message");
@@ -205,32 +306,36 @@ void setup()
    Serial.println("<setup> End of setup");
 } // setup()
 
-uint8_t servonum = 1; // Which servo to control (0-15)
+//uint8_t servonum = 1; // Which servo to control (0-15)
 
 /**
  * @brief Main loop.
  * =================================================================================*/
 void loop() 
 {
+   // Check for incoming MQTT commands and process as needed.
    String cmd = mqtt.getCmd();
    if(cmd != "")
    {
-      Serial.print("<loop> Process command: ");
-      Serial.println(cmd.toInt());
-      pwm.setPWM(servonum, SERVO_START_TICK, cmd.toInt());
-   } //if
+      Serial.print("<loop> cmd = ");
+      Serial.println(cmd);
+      bool allIsWell = processCmd(cmd);
+      if(allIsWell)
+      {
+         Serial.println("<loop> All went well.");
+      } // if 
+      else
+      {
+         Serial.println("<loop> Something went wrong.");
+      } // if 
+   } // if
+  
+  // Check if external PWM interrupt has occured and track with counters.
   if(interruptCounter > 0)
   {
       portENTER_CRITICAL(&mux);
       interruptCounter--;
       portEXIT_CRITICAL(&mux);
       numberOfInterrupts++;
-      Serial.print("Interrupt count = ");
-      Serial.print(numberOfInterrupts);
-      Serial.print(" Last diff = ");
-      Serial.print(now-last);
-      Serial.print(" ms or freq of ");
-      Serial.print(1000/(now-last));
-      Serial.println("Hz.");
   } // if
 } // loop()

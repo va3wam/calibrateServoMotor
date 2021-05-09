@@ -258,7 +258,10 @@ void aaMqtt::onMqttMessage(char *topic, char *payload, AsyncMqttClientMessagePro
    Serial.println(tmp);
    char msg[30]; // Used to hold message converted from const.
    strcpy(msg, tmp.c_str()); // Convert const char* to char*;
+   Serial.print("<onMqttMessage> msg = ");
+   Serial.println(msg);
    cmdQueue.push(msg); // Push message onto FIFO buffer stack.
+   cmdQueue.dumpBuffer();
 } // aaMqtt::onMqttMessage()
 
 /**
@@ -273,9 +276,13 @@ String aaMqtt::getCmd()
    } // if
    else
    {
-      Serial.println("<setup> Pulling command from the buffer.");
-      char str[cmdQueue.getMaxBufferSize()];
+      int8_t strSize = cmdQueue.getMaxBufferSize();
+      char str[strSize];
       cmdQueue.pop(str);
+      Serial.print("<aaMqtt::getCmd> Size of string = ");
+      Serial.println(strSize);
+      Serial.print("<aaMqtt::getCmd> Command pulled from buffer = ");
+      Serial.println(String(str));
       return String(str);
    } // else
 } // aaMqtt::getCmd()

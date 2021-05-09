@@ -165,6 +165,8 @@ void aaStringQueue::dumpBuffer()
  * =================================================================================*/
 void aaStringQueue::push(char* newItem) // Add content to top of buffer.
 {
+   Serial.print("<aaStringQueue::push> newItem = ");
+   Serial.println(String(newItem));
    _shiftBuffer();
    strcpy((char*)mqttCommandBuffer[0], newItem);
    _numCmdsBuffered++;
@@ -190,7 +192,8 @@ void aaStringQueue::pop(char* dest)
    if(_numCmdsBuffered > 0)
    {
       _numCmdsBuffered --; // Reduce count and aligns index to 0 based index slot.
-      strcpy(dest, (const char*)mqttCommandBuffer[_numCmdsBuffered]); // Pass command. 
+      strcpy(dest, (const char*)mqttCommandBuffer[_numCmdsBuffered]); // Pass command.
+      Serial.print("<aaStringQueue::pop> dest = "); Serial.println(dest); 
       memset(mqttCommandBuffer[_numCmdsBuffered], 0, COMMAND_MAX_LENGTH); // Clear slot.
    } // if
 } // aaStringQueue::pop()

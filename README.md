@@ -4,6 +4,14 @@ This code is used to calibrate the frequency of the PCA9685 I2C 16 channel servo
 ## Overview
 In order to ensure that all Hexapod robots behave the same way we need to follow two seperate calibration procedures. The first calibration procedure sets the output frequency of the PCA9685 servo driver. The second procedure calibrates the mapping of angles with the movement range of each servo motor attached to the driver. 
 
+## Before you start
+Before you start calibrating you will need the following:
+
+* An MQTT broker
+* A tool such as [MQTT.fx](https://softblade.de/en/download-2/)
+* Change the IP address in the **setup** section of the main.cpp code ```IPAddress brokerIP(192, 168, 2, 21);```
+
+
 ## Procedure 1. Calibrating the PCA9685 output Frequency
 We started out using a procedure outline in [this repo](https://github.com/va3wam/PCA9685_Frequency_Calibration) for details and sample code for this procedure. Perhaps  a better approach is exaplined as follows:
 
@@ -13,6 +21,14 @@ In theory the internal oscillator (clock) is 25MHz but it really isn't that prec
 2. Adjust setOscillatorFrequency() until the PWM update frequency is the expected value (50Hz for most ESCs)
 
 Setting the value here is specific to each individual I2C PCA9685 chip and affects the calculations for the PWM update frequency. Failure to correctly set the int.osc value will cause unexpected PWM results
+
+### Quick Steps
+Here is the process to follow when calibrating your PCA9685 output frequency to 50Hz.
+1. From MQTT.fx issue the command ```SERVO_GET_FREQ```
+2. Look at a line like this in the console: ```<processCmd> Interrupt count = 22275, period = 20 ms, freq = 50Hz.```
+3. If the freq is 50Hz you are done.
+4. If the freq is less than 50Hz decrease the value of oscFreq in the setup section of main.cpp: ```oscFreq = 25700500;```. Repeat steps. 
+5. If the freq is more than 50Hz increase the value of oscFreq in the setup section of main.cpp: ```oscFreq = 25700500;```. Repeat steps.
 
 ## Procedure 2. Calibrating the Servo Motor Angle
 [Servo control](https://en.wikipedia.org/wiki/Servo_control) is a method of controlling many types of RC/hobbyist servos by sending the servo a PWM (pulse-width modulation) signal, a series of repeating pulses of variable width where either the width of the pulse (most common modern hobby servos) or the duty cycle of a pulse train (less common today) determines the position to be achieved by the servo.
@@ -25,6 +41,22 @@ Frequency as it relates to PWM, is the number of times per second that we repeat
 The frequency of a PWM signal determines how fast a PWM completes one period. The formulae to calculate the Frequency is ```Frequency = 1/Time Period```. 
 
 <img title="Servo Motor Signalling" alt="PWM Signal" src="./img/pulse-width-modulation-duty-cycle.gif">
+
+### Quick Steps
+Here is the process to follow when calibrating the MG 996R servo motors. 
+1. From MQTT.fx issue the command ```SERVO_POS,mNum,value``` where mNum is the motor number and value is a number. Start with a vaue around 110. 
+2. Decrease the value in the step above by 5 and repeat step 1 until the servo stops moving.
+3. Refine the number to get the value that puts you at 0 degrees angle.
+4. Update the minimum value for the motor in the setup section of main.cpp: ```servoMotor[mNum].min = value``` where mNum is the motor number and value is the number you landed on in step 3.
+5. Place a horn on the servo so that one point is at a 90 degree angle from the body of the motor.
+6. Repeat step 1 but this time start with a number around 495.
+7. Increase the value in the step above by 5 and repeast step 4 until the servo stops moving.
+8. Refine the number to get the value that puts you at 180 degrees angle.
+9. Update the maximum value for the motor in the setup section of main.cpp: ```servoMotor[mNum].max = value``` where mNum is the motor number and value is the number you landed on in step 8.
+10. Repeat these steps for all of the Servo motors that you need to calibrate.  
+Look at the position a line like this in the console: ```<processCmd> Interrupt count = 22275, period = 20 ms, freq = 50Hz.```
+11. Verify that you set things up correctly by issuing the command: ```SERVO_ANGLE,mNum,angle``` where mNum is the motor number and aangle is any angle between 0 and 180.
+12. Look at the motor and confirm that the horn is pointing to the angle that you specified in step 11.
 
 ### How positioning works
 When a pulse is sent to a servo that is less than 1.5 ms, the servo rotates to a position and holds its output shaft some number of degrees counterclockwise from the neutral point. When the pulse is wider than 1.5 ms the opposite occurs. The minimal and maximal widths of pulse that will command the servo to turn to a valid position are functions of each servo. Different brands, and even different servos of the same brand, will have different maxima and minima. Generally, the minimal pulse will be about 1 ms wide, and the maximal pulse will be 2 ms wide.
