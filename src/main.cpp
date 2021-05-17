@@ -78,6 +78,7 @@ const byte interruptPin = 14; // GPIO14 is physical pin 11 on 30 pin Devkit V1 b
 volatile int interruptCounter = 0;
 int numberOfInterrupts = 0;
 volatile long last, now; 
+bool walkFlag = false;
  
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -187,6 +188,36 @@ bool processCmd(String payload)
       return true;
    } // if
 
+  // If user wanats to know the curret frequency of the PWM signal from the PCA9685.
+   if(cmd == "WALK")
+   {
+      uint8_t walkActive = arg.toInt(); // 0 = stand still, 1 = walk 
+      uint16_t walkStyle = val.toInt(); // 0 = basic cadence, 1 = inverted kinematics
+      Serial.print("<processCmd> Walking activation = ");
+      Serial.println(walkActive);
+      Serial.print("<processCmd> Walking style = ");
+      Serial.println(walkStyle);
+      if(walkActive == 1)
+      {
+         Serial.print("<processCmd> Start walking using style ");
+         walkFlag = true;
+         if(walkStyle == 0)
+         {
+            Serial.println("BASIC CADENCE.");
+         } // if
+         else
+         {
+            Serial.println("INVERTED KINEMETICS.");
+         } // else
+      } // if
+      else
+      {
+         Serial.println("<processCmd> Stop walking.");
+         walkFlag = false;
+      } // else
+      return true;
+   } // if
+
    // If the command sent is unrecognized.
    Serial.println("<processCmd> Warning - unrecognized command."); 
    return false;
@@ -237,7 +268,7 @@ void setup()
       oscFreq = 25700500; // PWM output via PWM0 on PCA9685. Make function to set automatically. 
       servoMotor[1].min = 110; // Servo #1
       servoMotor[1].mid = 310;
-      servoMotor[1].max = 510;
+      servoMotor[1].max = 505;
       servoMotor[2].min = 110; // Servo #2
       servoMotor[2].mid = 300;
       servoMotor[2].max = 495;
@@ -254,7 +285,7 @@ void setup()
       oscFreq = 25700500; // PWM output via PWM0 on PCA9685. Make function to set automatically. 
       servoMotor[1].min = 110; // Servo #1
       servoMotor[1].mid = 310;
-      servoMotor[1].max = 510;
+      servoMotor[1].max = 505;
       servoMotor[2].min = 110; // Servo #2
       servoMotor[2].mid = 300;
       servoMotor[2].max = 495;
