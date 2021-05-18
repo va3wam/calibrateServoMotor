@@ -68,9 +68,16 @@ aaFormat format;
 // Structure for servo motors
 typedef struct
 {
-   long min;
-   long mid;
-   long max;
+   String role; // The role this servo fills for the robot.
+   String label; // The role this servo fills for the robot.
+   int driverPort; // The driver port (0-15) that the servo is connected to.
+   long stand; // Position when standing to attention. 
+   long step; // Position for full step formward.
+   long min; // Minimal value servo can move to.
+   long max; // Maximum value servo can move to.
+   long east; // Servo is at the 0 position of a 180 degree arch.
+   long north; // Servo is at the 90 degree position of a 180 degree arch.
+   long west; // Servo is at the 180 degree position of a 180 degree arch.
 } servoMotorStruct;
 servoMotorStruct servoMotor[SERVO_CNT + 1];
 
@@ -154,24 +161,28 @@ bool processCmd(String payload)
       return true;
    } // if
 
+   // Since the servo motors we are using do not move in a linear fasion around their north (centre of range)
+   // posiiton we cannot use the Arduino MAP() function as it requires that the servos move linearally. So do not
+   // try to issue angle commands using the mapping function but instead set values up for key positions and move
+   // using setPWM method.
    if(cmd == "SERVO_ANGLE") 
    {
       uint8_t servoNumber = arg.toInt();
       uint16_t servoPosition = val.toInt();
-      long pulseLength = map(servoPosition, 0, 180, servoMotor[servoNumber].min, servoMotor[servoNumber].max);
+      long pulseLength = map(servoPosition, 0, 180, servoMotor[servoNumber].west, servoMotor[servoNumber].east);
       Serial.print("<processCmd> Requested degrees = "); 
       Serial.println(servoPosition);
-      Serial.print("<processCmd> Servo min mapped to 0 = "); 
-      Serial.println(servoMotor[servoNumber].min);
-      Serial.print("<processCmd> Servo max mapped to 180 = "); 
-      Serial.println(servoMotor[servoNumber].max);
+      Serial.print("<processCmd> Servo west mapped to 0 = "); 
+      Serial.println(servoMotor[servoNumber].west);
+      Serial.print("<processCmd> Servo east mapped to 180 = "); 
+      Serial.println(servoMotor[servoNumber].east);
       Serial.print("<processCmd> Move servo number "); 
       Serial.print(servoNumber);
       Serial.print(" to angle ");
       Serial.print(servoPosition);
       Serial.print(" which maps to pulse length ");
       Serial.println(pulseLength);
-      pwm.setPWM(servoNumber, SERVO_START_TICK, pulseLength);      
+      pwm.setPWM(servoMotor[servoNumber].driverPort, SERVO_START_TICK, pulseLength);      
       return true;
    } // if
 
@@ -266,35 +277,101 @@ void setup()
    {
       Serial.println("<setup> Andrews MCU specific settings");
       oscFreq = 25700500; // PWM output via PWM0 on PCA9685. Make function to set automatically. 
-      servoMotor[1].min = 110; // Servo #1
-      servoMotor[1].mid = 310;
-      servoMotor[1].max = 505;
-      servoMotor[2].min = 110; // Servo #2
-      servoMotor[2].mid = 300;
-      servoMotor[2].max = 495;
-      servoMotor[3].min = 125; // Servo #3
-      servoMotor[3].mid = 330;
-      servoMotor[3].max = 525;
-      servoMotor[4].min = 120; // Servo #4
-      servoMotor[4].mid = 315;
-      servoMotor[4].max = 510;
+      // LEG #1 ===============================================================
+      // Servo #1 - Hip Joint
+      servoMotor[1].role = "Hip joint"; // The role this servo fills for the robot.
+      servoMotor[1].label = "2"; // The label marked on the servo.
+      servoMotor[1].driverPort = 13; // The driver port (0-15) that the servo is connected to.
+      servoMotor[1].stand = 300; // Position when standing to attention. 
+      servoMotor[1].step = 200; // Position for full step formward.
+      servoMotor[1].min = 72; // Minimal value servo can move to.
+      servoMotor[1].max = 538; // Maximum value servo can move to.
+      servoMotor[1].east = 95; // Servo is at the 0 position of a 180 degree arch.
+      servoMotor[1].north = 290; // Servo is at the 90 degree position of a 180 degree arch.
+      servoMotor[1].west = 485; // Servo is at the 180 degree position of a 180 degree arch.
+      // Servo #2 - Knee Joint
+      servoMotor[2].role = "Knee joint"; // The role this servo fills for the robot.
+      servoMotor[2].label = "3"; // The label marked on the servo.
+      servoMotor[2].driverPort = 14; // The driver port (0-15) that the servo is connected to.
+      servoMotor[2].stand = 510; // Position when standing to attention. 
+      servoMotor[2].step = 450; // Position for full step formward.
+      servoMotor[2].min = 72; // Minimal value servo can move to.
+      servoMotor[2].max = 540; // Maximum value servo can move to.
+      servoMotor[2].east = 100; // Servo is at the 0 position of a 180 degree arch.
+      servoMotor[2].north = 300; // Servo is at the 90 degree position of a 180 degree arch.
+      servoMotor[2].west = 500; // Servo is at the 180 degree position of a 180 degree arch.
+      // Servo #3 - Ankle Joint
+      servoMotor[3].role = "Ankle joint"; // The role this servo fills for the robot.
+      servoMotor[3].label = "4"; // The label marked on the servo.
+      servoMotor[3].driverPort = 15; // The driver port (0-15) that the servo is connected to.
+      servoMotor[3].stand = 270; // Position when standing to attention. 
+      servoMotor[3].step = 200; // Position for full step formward.
+      servoMotor[3].min = 71; // Minimal value servo can move to.
+      servoMotor[3].max = 538; // Maximum value servo can move to.
+      servoMotor[3].east = 90; // Servo is at the 0 position of a 180 degree arch.
+      servoMotor[3].north = 290; // Servo is at the 90 degree position of a 180 degree arch.
+      servoMotor[3].west = 480; // Servo is at the 180 degree position of a 180 degree arch.
+      // Servo #4 - Unused
+      servoMotor[4].role = "Unused"; // The role this servo fills for the robot.
+      servoMotor[4].label = "1"; // The label marked on the servo.
+      servoMotor[4].driverPort = 12; // The driver port (0-15) that the servo is connected to.
+      servoMotor[4].stand = 270; // Position when standing to attention. 
+      servoMotor[4].step = 200; // Position for full step formward.
+      servoMotor[4].min = 71; // Minimal value servo can move to.
+      servoMotor[4].max = 538; // Maximum value servo can move to.
+      servoMotor[4].east = 90; // Servo is at the 0 position of a 180 degree arch.
+      servoMotor[4].north = 290; // Servo is at the 90 degree position of a 180 degree arch.
+      servoMotor[4].west = 480; // Servo is at the 180 degree position of a 180 degree arch.
    } // if
-   else // Doug's MCU
+   else // Doug's MCU. NOTE: Stand and Step values not set yet! Using Andrew's values. 
    {
       Serial.print("<setup> Dougs MCU specific settings");
       oscFreq = 25700500; // PWM output via PWM0 on PCA9685. Make function to set automatically. 
-      servoMotor[1].min = 110; // Servo #1
-      servoMotor[1].mid = 310;
-      servoMotor[1].max = 505;
-      servoMotor[2].min = 110; // Servo #2
-      servoMotor[2].mid = 300;
-      servoMotor[2].max = 495;
-      servoMotor[3].min = 125; // Servo #3
-      servoMotor[3].mid = 330;
-      servoMotor[3].max = 525;
-      servoMotor[4].min = 120; // Servo #4
-      servoMotor[4].mid = 315;
-      servoMotor[4].max = 510;
+      // LEG #1 ===============================================================
+      // Servo #1 - Hip Joint
+      servoMotor[1].role = "Hip joint"; // The role this servo fills for the robot.
+      servoMotor[1].label = "D1"; // The label marked on the servo.
+      servoMotor[1].driverPort = 1; // The driver port (0-15) that the servo is connected to.
+      servoMotor[1].stand = 300; // Position when standing to attention. 
+      servoMotor[1].step = 200; // Position for full step formward.
+      servoMotor[1].min = 72; // Minimal value servo can move to.
+      servoMotor[1].max = 540; // Maximum value servo can move to.
+      servoMotor[1].east = 120; // Servo is at the 0 position of a 180 degree arch.
+      servoMotor[1].north = 300; // Servo is at the 90 degree position of a 180 degree arch.
+      servoMotor[1].west = 505; // Servo is at the 180 degree position of a 180 degree arch.
+      // Servo #2 - Knee Joint
+      servoMotor[2].role = "Knee joint"; // The role this servo fills for the robot.
+      servoMotor[2].label = "D2"; // The label marked on the servo.
+      servoMotor[2].driverPort = 2; // The driver port (0-15) that the servo is connected to.
+      servoMotor[2].stand = 510; // Position when standing to attention. 
+      servoMotor[2].step = 450; // Position for full step formward.
+      servoMotor[2].min = 71; // Minimal value servo can move to.
+      servoMotor[2].max = 530; // Maximum value servo can move to.
+      servoMotor[2].east = 117; // Servo is at the 0 position of a 180 degree arch.
+      servoMotor[2].north = 300; // Servo is at the 90 degree position of a 180 degree arch.
+      servoMotor[2].west = 510; // Servo is at the 180 degree position of a 180 degree arch.
+      // Servo #3 - Ankle Joint
+      servoMotor[3].role = "Ankle joint"; // The role this servo fills for the robot.
+      servoMotor[3].label = "D3"; // The label marked on the servo.
+      servoMotor[3].driverPort = 3; // The driver port (0-15) that the servo is connected to.
+      servoMotor[3].stand = 270; // Position when standing to attention. 
+      servoMotor[3].step = 200; // Position for full step formward.
+      servoMotor[3].min = 72; // Minimal value servo can move to.
+      servoMotor[3].max = 539; // Maximum value servo can move to.
+      servoMotor[3].east = 110; // Servo is at the 0 position of a 180 degree arch.
+      servoMotor[3].north = 300; // Servo is at the 90 degree position of a 180 degree arch.
+      servoMotor[3].west = 500; // Servo is at the 180 degree position of a 180 degree arch.
+      // Servo #4 - Unused
+      servoMotor[4].role = "Unused"; // The role this servo fills for the robot.
+      servoMotor[4].label = "D4"; // The label marked on the servo.
+      servoMotor[4].driverPort = 4; // The driver port (0-15) that the servo is connected to.
+      servoMotor[4].stand = 270; // Position when standing to attention. 
+      servoMotor[4].step = 200; // Position for full step formward.
+      servoMotor[4].min = 72; // Minimal value servo can move to.
+      servoMotor[4].max = 539; // Maximum value servo can move to.
+      servoMotor[4].east = 107; // Servo is at the 0 position of a 180 degree arch.
+      servoMotor[4].north = 300; // Servo is at the 90 degree position of a 180 degree arch.
+      servoMotor[4].west = 505; // Servo is at the 180 degree position of a 180 degree arch.
    } //else
 
    for (int i = SERVO_START_NUM; i < SERVO_CNT; i++)
@@ -304,7 +381,7 @@ void setup()
       Serial.print(" Max = "); Serial.println(servoMotor[i].max);
    }  // for 
 
-   if(oscFreq == 25700500)
+   if(oscFreq == 25700500) // Should use library call here to get actual value.
    {
       Serial.println("<setup> Oscillator freq matches.");
    } // if
@@ -321,9 +398,8 @@ void setup()
       x = mqtt.publishMQTT(HEALTH_MQTT_TOPIC, "This is a test message");
       delay(10);
    } //while     
-   Serial.println("<setup> Calibrating servo min/max values via MQTT commands");
    pwm.begin();
-   pwm.setOscillatorFrequency(oscFreq); // Make function to adjust thiis until the PWM 
+   pwm.setOscillatorFrequency(oscFreq); // Make function to adjust this until the PWM 
                                         // signal on pin 11 to hit as close to 50Hz as 
                                         // possible. Using Saleae Logic 8 unit outut 
                                         // ranges from 49.72Hz to 50.51Hz with most 
