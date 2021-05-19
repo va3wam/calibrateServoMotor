@@ -242,7 +242,11 @@ void setup()
    char uniqueName[HOST_NAME_SIZE]; // Character array that holds unique name. 
    char *uniqueNamePtr = uniqueName; // Pointer to unique name character array.
    uint32_t oscFreq; // Oscillator freq of the PCA9865 servo motor driver. Board specific.
-   IPAddress brokerIP(192, 168, 2, 21); // IP address of the MQTT broker.
+   uint8_t brokerIpOctet0; // First octet of broker IP address.
+   uint8_t brokerIpOctet1; // Second octet of broker IP address.
+   uint8_t brokerIpOctet2; // Third octet of broker IP address.
+   uint8_t brokerIpOctet3; // Fourth octet of broker IP address.
+//   IPAddress brokerIP(192, 168, 2, 21); // IP address of the MQTT broker.
    setupSerial(); // Set serial baud rate. 
    Serial.println("<setup> Start of setup");
    wifi.connect(); // Connect to a known WiFi network.
@@ -275,6 +279,10 @@ void setup()
    // Failure to correctly set the int.osc value will cause unexpected PWM results
    if(strcmp(uniqueName, "calServoCC50E394F048") == 0) // Andrew's MCU
    {
+      brokerIpOctet0 = 192; // First octet of broker IP address.
+      brokerIpOctet1 = 168; // Second octet of broker IP address.
+      brokerIpOctet2 = 2; // Third octet of broker IP address.
+      brokerIpOctet3 = 21; // Fourth octet of broker IP address.
       Serial.println("<setup> Andrews MCU specific settings");
       oscFreq = 25700500; // PWM output via PWM0 on PCA9685. Make function to set automatically. 
       // LEG #1 ===============================================================
@@ -325,6 +333,10 @@ void setup()
    } // if
    else // Doug's MCU. NOTE: Stand and Step values not set yet! Using Andrew's values. 
    {
+      brokerIpOctet0 = 192; // First octet of broker IP address.
+      brokerIpOctet1 = 168; // Second octet of broker IP address.
+      brokerIpOctet2 = 0; // Third octet of broker IP address.
+      brokerIpOctet3 = 99; // Fourth octet of broker IP address.
       Serial.print("<setup> Dougs MCU specific settings");
       oscFreq = 25700500; // PWM output via PWM0 on PCA9685. Make function to set automatically. 
       // LEG #1 ===============================================================
@@ -390,6 +402,7 @@ void setup()
       Serial.println("<setup> Oscillator freq DOES NOT match.");
    } // else
    wifi.cfgToConsole();
+   IPAddress brokerIP(brokerIpOctet0, brokerIpOctet1, brokerIpOctet2, brokerIpOctet3); // IP address of the MQTT broker.
    mqtt.connect(brokerIP, uniqueName);
    bool x = false;
 

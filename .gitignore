@@ -1,6 +1,6 @@
 # PlatformIO
 *.pio
-*.pio/build/project.checksum
+*.pio/build/*
 *platformio.ini
 
 # Visual Studio Code
@@ -12,3 +12,6 @@
 
 # Build
 *output.map
+
+#LibreOffice
+docs/libreOffice/*lock.*
