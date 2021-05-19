@@ -246,7 +246,7 @@ void setup()
    uint8_t brokerIpOctet1; // Second octet of broker IP address.
    uint8_t brokerIpOctet2; // Third octet of broker IP address.
    uint8_t brokerIpOctet3; // Fourth octet of broker IP address.
-//   IPAddress brokerIP(192, 168, 2, 21); // IP address of the MQTT broker.
+//   IPAddress brokerIP(192, 168, 2, 21); // IP address of the MQTT broker. <-- delete this line
    setupSerial(); // Set serial baud rate. 
    Serial.println("<setup> Start of setup");
    wifi.connect(); // Connect to a known WiFi network.
