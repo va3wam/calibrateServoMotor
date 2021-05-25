@@ -1,5 +1,5 @@
 # PlatformIO
-*.pio
+*.pio*
 *.pio/build/*
 *platformio.ini
 
