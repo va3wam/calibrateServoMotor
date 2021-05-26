@@ -65,7 +65,7 @@ aaFormat format;
 #define PIN_SERVO_FEEDBACK 0 // Connect orange PWM pin, 0 = first on first block. Monitor PWM from servo driver. 
 #define SERVO_START_NUM 1 // First servo cnnected to pin 1
 #define SERVO_CNT 4 // Number of servos connected
-// Structure for servo motors
+// Structure for servo motors.
 typedef struct
 {
    String role; // The role this servo fills for the robot.
@@ -82,12 +82,41 @@ typedef struct
 servoMotorStruct servoMotor[SERVO_CNT + 1];
 
 const byte interruptPin = 14; // GPIO14 is physical pin 11 on 30 pin Devkit V1 board.
-volatile int interruptCounter = 0;
-int numberOfInterrupts = 0;
-volatile long last, now; 
-bool walkFlag = false;
+volatile int interruptCounter = 0; // Number of signals from servo driver not processed.
+int numberOfInterrupts = 0; // Total number of servo driver signals in total.
+volatile long last, now; // Track freq of servo motorcontroller PWM signal.
+
+// State machine for walking cadence.
+enum stepCadenceStates 
+{
+  STOP = 0, // No movement. 
+  CRAWL = 1, // Slow gate.
+  WALK = 2, // Normal gate.
+  RUN = 3 // Fast gate.
+};
+enum stepCadenceStates style;
+
+// State machine for step phases.
+enum stepPhaseStates 
+{
+  NEUTRAL = 0, // Leg joint start and end step position.
+  LIFT = 1, // 
+  STEP = 2, // blink enable
+  LOWER = 3 // we want the led to be on for interval
+};
  
-portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+// Structure for walking.
+typedef struct
+{
+   bool walkFlag = false; // Walking or standing still?
+   enum stepCadenceStates cadence; // Walking cadence.
+   enum stepPhaseStates phase; // Walking phase.
+   int32_t cadencePeriod; // How long between phases in millis.
+   unsigned long timer; // Milli count for next action.
+} walkingStruct;
+walkingStruct walkingState; // Track walking phases
+ 
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED; // Mutex to prevent ISR and main conflicts
 
 /**
  * @brief ISR for PWM signal from PCA9685.
@@ -186,7 +215,7 @@ bool processCmd(String payload)
       return true;
    } // if
 
-   // If user wanats to know the curret frequency of the PWM signal from the PCA9685.
+   // If user wants to know the current frequency of the PWM signal from the PCA9685.
    if(cmd == "SERVO_GET_FREQ")
    {
       Serial.print("<processCmd> Interrupt count = ");
@@ -199,7 +228,7 @@ bool processCmd(String payload)
       return true;
    } // if
 
-  // If user wanats to know the curret frequency of the PWM signal from the PCA9685.
+  // If user wants the leg to start walking.
    if(cmd == "WALK")
    {
       uint8_t walkActive = arg.toInt(); // 0 = stand still, 1 = walk 
@@ -208,13 +237,18 @@ bool processCmd(String payload)
       Serial.println(walkActive);
       Serial.print("<processCmd> Walking style = ");
       Serial.println(walkStyle);
+
       if(walkActive == 1)
       {
          Serial.print("<processCmd> Start walking using style ");
-         walkFlag = true;
          if(walkStyle == 0)
          {
             Serial.println("BASIC CADENCE.");
+            walkingState.phase = NEUTRAL; // Start in neutral position.   
+            walkingState.cadencePeriod = WALK; // Set cadence to a walking gate.
+            walkingState.walkFlag = true; // Flag us to start walking.
+            walkingState.cadencePeriod = 1000; // Millis between cadence phases.
+            walkingState.timer = millis(); // Set next phase timer.
          } // if
          else
          {
@@ -224,7 +258,8 @@ bool processCmd(String payload)
       else
       {
          Serial.println("<processCmd> Stop walking.");
-         walkFlag = false;
+         walkingState.cadencePeriod = STOP; // Set cadence to a walking gate.
+         walkingState.walkFlag = false;
       } // else
       return true;
    } // if
@@ -246,7 +281,6 @@ void setup()
    uint8_t brokerIpOctet1; // Second octet of broker IP address.
    uint8_t brokerIpOctet2; // Third octet of broker IP address.
    uint8_t brokerIpOctet3; // Fourth octet of broker IP address.
-//   IPAddress brokerIP(192, 168, 2, 21); // IP address of the MQTT broker. <-- delete this line
    setupSerial(); // Set serial baud rate. 
    Serial.println("<setup> Start of setup");
    wifi.connect(); // Connect to a known WiFi network.
@@ -457,5 +491,49 @@ void loop()
       interruptCounter--;
       portEXIT_CRITICAL(&mux);
       numberOfInterrupts++;
+  } // if
+
+  // Walking logic
+  if(walkingState.walkFlag == true) //  Are we supposed to be walking?
+  {
+      if(walkingState.timer <= millis()) // Time to act?
+      {
+         switch(walkingState.phase) 
+         {
+            case NEUTRAL:
+               Serial.println("<loop> Neutral position for all 3 motors.");         
+               pwm.setPWM(servoMotor[1].driverPort, SERVO_START_TICK, servoMotor[1].stand); // Hip
+               pwm.setPWM(servoMotor[2].driverPort, SERVO_START_TICK, servoMotor[2].stand); // Knee
+               pwm.setPWM(servoMotor[3].driverPort, SERVO_START_TICK, servoMotor[3].stand); // Ankle 
+               walkingState.phase = LIFT; 
+               break;
+            case LIFT:
+               Serial.println("<loop> Lift position for all 3 motors.");         
+               pwm.setPWM(servoMotor[1].driverPort, SERVO_START_TICK, servoMotor[1].stand); // Hip
+               pwm.setPWM(servoMotor[2].driverPort, SERVO_START_TICK, servoMotor[2].step); // Knee
+               pwm.setPWM(servoMotor[3].driverPort, SERVO_START_TICK, servoMotor[3].step); // Ankle 
+               walkingState.phase = STEP; 
+               break;
+            case STEP:
+               Serial.println("<loop> Step position for all 3 motors.");         
+               pwm.setPWM(servoMotor[1].driverPort, SERVO_START_TICK, servoMotor[1].step); // Hip
+               pwm.setPWM(servoMotor[2].driverPort, SERVO_START_TICK, servoMotor[2].step); // Knee
+               pwm.setPWM(servoMotor[3].driverPort, SERVO_START_TICK, servoMotor[3].step); // Ankle
+               walkingState.phase = LOWER; 
+               break;
+            case LOWER:
+               Serial.println("<loop> Lower position for all 3 motors.");         
+               pwm.setPWM(servoMotor[1].driverPort, SERVO_START_TICK, servoMotor[1].step); // Hip
+               pwm.setPWM(servoMotor[2].driverPort, SERVO_START_TICK, servoMotor[2].stand); // Knee
+               pwm.setPWM(servoMotor[3].driverPort, SERVO_START_TICK, servoMotor[3].stand); // Ankle
+               walkingState.phase = NEUTRAL; 
+               break;
+            default:
+               Serial.println("<loop> Error - invalid step state");
+               walkingState.phase = NEUTRAL; 
+               break;
+         } // switch   
+         walkingState.timer = millis() + walkingState.cadencePeriod;      
+      } // if
   } // if
 } // loop()
