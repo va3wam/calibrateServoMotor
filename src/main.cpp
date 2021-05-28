@@ -493,7 +493,7 @@ void loop()
       numberOfInterrupts++;
   } // if
 
-  // Walking logic
+  // Walking logic. This is a very basic and non-useful gate used to prove out the jig for 1 leg.
   if(walkingState.walkFlag == true) //  Are we supposed to be walking?
   {
       if(walkingState.timer <= millis()) // Time to act?
