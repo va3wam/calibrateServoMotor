@@ -325,7 +325,7 @@ void setup()
       servoMotor[1].label = "2"; // The label marked on the servo.
       servoMotor[1].driverPort = 13; // The driver port (0-15) that the servo is connected to.
       servoMotor[1].stand = 300; // Position when standing to attention. 
-      servoMotor[1].step = 200; // Position for full step formward.
+      servoMotor[1].step = 400; // Position for full step formward.
       servoMotor[1].min = 72; // Minimal value servo can move to.
       servoMotor[1].max = 538; // Maximum value servo can move to.
       servoMotor[1].east = 95; // Servo is at the 0 position of a 180 degree arch.
@@ -335,8 +335,8 @@ void setup()
       servoMotor[2].role = "Knee joint"; // The role this servo fills for the robot.
       servoMotor[2].label = "3"; // The label marked on the servo.
       servoMotor[2].driverPort = 14; // The driver port (0-15) that the servo is connected to.
-      servoMotor[2].stand = 510; // Position when standing to attention. 
-      servoMotor[2].step = 450; // Position for full step formward.
+      servoMotor[2].stand = 300; // Position when standing to attention. 
+      servoMotor[2].step = 200; // Position for full step formward.
       servoMotor[2].min = 72; // Minimal value servo can move to.
       servoMotor[2].max = 540; // Maximum value servo can move to.
       servoMotor[2].east = 100; // Servo is at the 0 position of a 180 degree arch.
@@ -346,7 +346,7 @@ void setup()
       servoMotor[3].role = "Ankle joint"; // The role this servo fills for the robot.
       servoMotor[3].label = "4"; // The label marked on the servo.
       servoMotor[3].driverPort = 15; // The driver port (0-15) that the servo is connected to.
-      servoMotor[3].stand = 270; // Position when standing to attention. 
+      servoMotor[3].stand = 300; // Position when standing to attention. 
       servoMotor[3].step = 200; // Position for full step formward.
       servoMotor[3].min = 71; // Minimal value servo can move to.
       servoMotor[3].max = 538; // Maximum value servo can move to.
@@ -493,7 +493,7 @@ void loop()
       numberOfInterrupts++;
   } // if
 
-  // Walking logic
+  // Walking logic. This is a very basic and non-useful gate used to prove out the jig for 1 leg.
   if(walkingState.walkFlag == true) //  Are we supposed to be walking?
   {
       if(walkingState.timer <= millis()) // Time to act?
@@ -522,10 +522,10 @@ void loop()
                walkingState.phase = LOWER; 
                break;
             case LOWER:
-               Serial.println("<loop> Lower position for all 3 motors.");         
+               Serial.println("<loop> Lower position for all 3 motors.");
+               pwm.setPWM(servoMotor[3].driverPort, SERVO_START_TICK, servoMotor[3].stand); // Ankle                      
                pwm.setPWM(servoMotor[1].driverPort, SERVO_START_TICK, servoMotor[1].step); // Hip
                pwm.setPWM(servoMotor[2].driverPort, SERVO_START_TICK, servoMotor[2].stand); // Knee
-               pwm.setPWM(servoMotor[3].driverPort, SERVO_START_TICK, servoMotor[3].stand); // Ankle
                walkingState.phase = NEUTRAL; 
                break;
             default:
