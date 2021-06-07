@@ -176,59 +176,29 @@ int32_t mapDegToPWM(float degrees, float centerDeg)
 bool processCmd(String payload)
 {
    String ucPayload = format.stringToUpper(payload);
-   /*  generalize command parsing to allow 0 to 20 comma separated strings, including the cmd
-   int firstComma = ucPayload.indexOf(",");
-   int secondComma = ucPayload.indexOf(",", firstComma + 1);
-   int lenCmd = firstComma;
-   int lenArg = secondComma - firstComma - 1;
-   int lenVal = ucPayload.length() - secondComma - 1;
-   int cmdStart =  0;
-   int argStart = firstComma + 1;
-   int valStart = secondComma + 1;
-   String cmd = ucPayload.substring(cmdStart, cmdStart + lenCmd);
-   String arg = ucPayload.substring(argStart, argStart + lenArg);
-   String val = ucPayload.substring(valStart, valStart + lenVal);
+   //  generalize command parsing to allow 1 - 20 comma separated strings, including the cmd
 
-   Serial.print("<processCmd> Payload length = "); Serial.println(ucPayload.length());
-   Serial.print("<processCmd> Received paylod = "); Serial.println(ucPayload);
-
-   Serial.print("<processCmd> First comma = "); Serial.println(firstComma);
-   Serial.print("<processCmd> Second comma = "); Serial.println(secondComma);
-
-   Serial.print("<processCmd> cmdStart = "); Serial.println(cmdStart);
-   Serial.print("<processCmd> lenCmd = "); Serial.println(lenCmd);
-   Serial.print("<processCmd> cmd = "); Serial.println(cmd);
-
-   Serial.print("<processCmd> argStart = "); Serial.println(argStart);
-   Serial.print("<processCmd> lenArg = "); Serial.println(lenArg);
-   Serial.print("<processCmd> arg = "); Serial.println(arg);
-
-   Serial.print("<processCmd> valStart = "); Serial.println(valStart);
-   Serial.print("<processCmd> lenVal = "); Serial.println(lenVal);
-   Serial.print("<processCmd> val = "); Serial.println(val);
-   */
-
-   String arg[20];      // arg[0] = cmd, arg[1] = 1st argument, arg[2] = second ...
-   int argN = 0;        // argument number that we're working on
-   int argStart = 0;    // character number where current argument starts
+   String arg[20];              // arg[0] = cmd, arg[1] = 1st argument, arg[2] = second ...
+   int argN = 0;                // argument number that we're working on
+   int argStart = 0;            // character number where current argument starts
    int argEnd = ucPayload.indexOf(",",argStart);  // position of comma at end of cmd
-   while(argEnd |= ucPayload.length());
-   {  arg[argN] = ucPayload.substring(argStart,argEnd - 1);
-      argN ++ ;
-      argStart = argEnd + 1;
-      argEnd = ucPayload.indexOf(",",argStart);
-   }
+   while(argEnd >= 0)           // .indexOf returns -1 if no string found
+   {  arg[argN] = ucPayload.substring(argStart,argEnd);  // extract the current argument
+      argN ++ ;                 // advance thr argument counter
+      argStart = argEnd + 1;    // next arg starts after previous arg's delimiting comma
+      argEnd = ucPayload.indexOf(",",argStart);  // find next arg's delimiting comma
+   }           
    // last argument had no comma delimiter, so grab it
-   arg[argN] = ucPayload.substring(argStart,argEnd - 1);
+   arg[argN] = ucPayload.substring(argStart,argEnd);
    // argN ends up as a count of the number of arguments, excluding the command
 
-   String cmd = arg[1];  // first comma separated value in payload is the command
+   String cmd = arg[0];          // first comma separated value in payload is the command
 
    // If user wants to move one of the servo motors.
    if(cmd == "SERVO_POS") 
    {
-      uint8_t servoNumber = arg[1].toInt();
-      uint16_t servoPosition = arg[2].toInt();
+      uint8_t servoNumber = arg[1].toInt();       // PWM identifier number for the servo
+      uint16_t servoPosition = arg[2].toInt();    // PWM value to feed the servo
       Serial.print("<processCmd> Move servo number "); 
       Serial.print(servoNumber);
       Serial.print(" to position ");
@@ -319,29 +289,15 @@ bool processCmd(String payload)
 
    if(cmd == "GOTO_ANGLES" || cmd == "GA")
    // format: goto_angles,<hip angle>,<knee angle>,<ankle angle>
-   //       with all angles in degrees, center = 0
+   //       with all angles in degrees, center (north) = 0
    // example: ga,0,0,0    would put robot in normal neutral stance
    {
- /*     // first, need to parse the third numeric argument
-      int thirdComma = ucPayload.indexOf(",",secondComma + 1 );
-      int lenVal = thirdComma - secondComma -1 ;
-      int lenVal2 = ucPayload.length() - thirdComma + 1;
-      int val2Start = thirdComma + 1;
-      String val = ucPayload.substring(valStart, valStart + lenVal);
-      String val2 =ucPayload.substring(val2Start, val2Start + lenVal2);
-*/
-      int32_t hipPWM = mapDegToPWM(arg[1].toFloat(), 0);
-      int32_t kneePWM = mapDegToPWM(arg[2].toFloat(), 0);
-      int32_t anklePWM = mapDegToPWM(arg[3].toFloat(), 0);
-
-Serial.println(hipPWM);
-Serial.println(kneePWM);
-Serial.println(anklePWM);
-
+      Serial.println("start goto_angles");
+ 
       // move the servos in parallel at top speed to desired angles
-      pwm.setPWM(servoMotor[1].driverPort, SERVO_START_TICK, hipPWM); // Hip
-      pwm.setPWM(servoMotor[2].driverPort, SERVO_START_TICK, kneePWM); // Knee
-      pwm.setPWM(servoMotor[3].driverPort, SERVO_START_TICK, anklePWM); // Ankle 
+      pwm.setPWM(servoMotor[1].driverPort, SERVO_START_TICK, mapDegToPWM(arg[1].toFloat(), 0)); // Hip
+      pwm.setPWM(servoMotor[2].driverPort, SERVO_START_TICK, mapDegToPWM(arg[2].toFloat(), 0)); // Knee
+      pwm.setPWM(servoMotor[3].driverPort, SERVO_START_TICK, mapDegToPWM(arg[3].toFloat(), 0)); // Ankle 
 
       // worst case is moving 90 degrees at .17 sec per 60 degrees, so ...
       delay(400);  // wait for moves to complete
