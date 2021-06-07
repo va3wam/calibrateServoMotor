@@ -141,12 +141,42 @@ void setupSerial()
    while (!Serial); // Wait for Serial port to be ready.
 } //setupSerial()
 
+int32_t mapDegToPWM(float degrees, float centerDeg)
+// translate a desired servo position expressed in degrees to a PWM number to feed the servo
+// if degrees is on a scale from 0 to 180, the center position is 90 degrees, specified in centerDeg
+// if degrees is on a scale from -90 to +90, the center position is 0, which goes in centerDeg
+// the equivalent PWM value is returned in integer parameter outPWM
+// 
+// using a horn with 24 positions allows positioning +/- 15 degrees
+// using a 25 poistion horn with reversing allows an accuracy of +/- 7.5 degrees
+//
+// At this level of accuracy, we can treat the current servo motors as identical,
+// all with North = 300, East = 115, and West = 486
+//
+// The servos aren't perfectly linear, and the PWM value may be off by as much as 3.9,
+// which is equivalent to a maximum error of less than 2 degrees
+{
+   // range check the desired degrees value
+   if(degrees < centerDeg - 90) {degrees = centerDeg - 90;};
+   if(degrees > centerDeg + 90) {degrees = centerDeg + 90;};
+
+   // formula fits a line to two measured data points (x=degrees, y=PWM) with the points
+   //   selected to minimize overall errors: (24,160) (166,460)
+   // formula is based on  y = M * x + b
+   //    where M is the slope, (delta Y)/(delta X)   for 2 selected points
+   //    b is the y intercept, derived by substituting a selected point into above formula after slope is known
+   
+   return (degrees - (centerDeg-90)) * 300 / 142 + 109.3;
+
+} // mapDegToPWM
+
 /**
  * @brief Process the incoming command.
  * =================================================================================*/
 bool processCmd(String payload)
 {
    String ucPayload = format.stringToUpper(payload);
+   /*  generalize command parsing to allow 0 to 20 comma separated strings, including the cmd
    int firstComma = ucPayload.indexOf(",");
    int secondComma = ucPayload.indexOf(",", firstComma + 1);
    int lenCmd = firstComma;
@@ -176,12 +206,29 @@ bool processCmd(String payload)
    Serial.print("<processCmd> valStart = "); Serial.println(valStart);
    Serial.print("<processCmd> lenVal = "); Serial.println(lenVal);
    Serial.print("<processCmd> val = "); Serial.println(val);
+   */
+
+   String arg[20];      // arg[0] = cmd, arg[1] = 1st argument, arg[2] = second ...
+   int argN = 0;        // argument number that we're working on
+   int argStart = 0;    // character number where current argument starts
+   int argEnd = ucPayload.indexOf(",",argStart);  // position of comma at end of cmd
+   while(argEnd |= ucPayload.length());
+   {  arg[argN] = ucPayload.substring(argStart,argEnd - 1);
+      argN ++ ;
+      argStart = argEnd + 1;
+      argEnd = ucPayload.indexOf(",",argStart);
+   }
+   // last argument had no comma delimiter, so grab it
+   arg[argN] = ucPayload.substring(argStart,argEnd - 1);
+   // argN ends up as a count of the number of arguments, excluding the command
+
+   String cmd = arg[1];  // first comma separated value in payload is the command
 
    // If user wants to move one of the servo motors.
    if(cmd == "SERVO_POS") 
    {
-      uint8_t servoNumber = arg.toInt();
-      uint16_t servoPosition = val.toInt();
+      uint8_t servoNumber = arg[1].toInt();
+      uint16_t servoPosition = arg[2].toInt();
       Serial.print("<processCmd> Move servo number "); 
       Serial.print(servoNumber);
       Serial.print(" to position ");
@@ -196,8 +243,8 @@ bool processCmd(String payload)
    // using setPWM method.
    if(cmd == "SERVO_ANGLE") 
    {
-      uint8_t servoNumber = arg.toInt();
-      uint16_t servoPosition = val.toInt();
+      uint8_t servoNumber = arg[1].toInt();
+      uint16_t servoPosition = arg[2].toInt();
       long pulseLength = map(servoPosition, 0, 180, servoMotor[servoNumber].west, servoMotor[servoNumber].east);
       Serial.print("<processCmd> Requested degrees = "); 
       Serial.println(servoPosition);
@@ -231,8 +278,8 @@ bool processCmd(String payload)
   // If user wants the leg to start walking.
    if(cmd == "WALK")
    {
-      uint8_t walkActive = arg.toInt(); // 0 = stand still, 1 = walk 
-      uint16_t walkStyle = val.toInt(); // 0 = basic cadence, 1 = inverted kinematics
+      uint8_t walkActive = arg[1].toInt(); // 0 = stand still, 1 = walk 
+      uint16_t walkStyle = arg[2].toInt(); // 0 = basic cadence, 1 = inverted kinematics
       Serial.print("<processCmd> Walking activation = ");
       Serial.println(walkActive);
       Serial.print("<processCmd> Walking style = ");
@@ -268,41 +315,45 @@ bool processCmd(String payload)
          walkingState.walkFlag = false;
       } // else
       return true;
-   } // if
+   } // if cmd = walk
+
+   if(cmd == "GOTO_ANGLES" || cmd == "GA")
+   // format: goto_angles,<hip angle>,<knee angle>,<ankle angle>
+   //       with all angles in degrees, center = 0
+   // example: ga,0,0,0    would put robot in normal neutral stance
+   {
+ /*     // first, need to parse the third numeric argument
+      int thirdComma = ucPayload.indexOf(",",secondComma + 1 );
+      int lenVal = thirdComma - secondComma -1 ;
+      int lenVal2 = ucPayload.length() - thirdComma + 1;
+      int val2Start = thirdComma + 1;
+      String val = ucPayload.substring(valStart, valStart + lenVal);
+      String val2 =ucPayload.substring(val2Start, val2Start + lenVal2);
+*/
+      int32_t hipPWM = mapDegToPWM(arg[1].toFloat(), 0);
+      int32_t kneePWM = mapDegToPWM(arg[2].toFloat(), 0);
+      int32_t anklePWM = mapDegToPWM(arg[3].toFloat(), 0);
+
+Serial.println(hipPWM);
+Serial.println(kneePWM);
+Serial.println(anklePWM);
+
+      // move the servos in parallel at top speed to desired angles
+      pwm.setPWM(servoMotor[1].driverPort, SERVO_START_TICK, hipPWM); // Hip
+      pwm.setPWM(servoMotor[2].driverPort, SERVO_START_TICK, kneePWM); // Knee
+      pwm.setPWM(servoMotor[3].driverPort, SERVO_START_TICK, anklePWM); // Ankle 
+
+      // worst case is moving 90 degrees at .17 sec per 60 degrees, so ...
+      delay(400);  // wait for moves to complete
+      return true;
+   } // if cmd = goto_angles
 
    // If the command sent is unrecognized.
    Serial.println("<processCmd> Warning - unrecognized command."); 
    return false;
 } // processCmd()
 
-void mapDegToPWM(float degrees, float centerDeg, int32_t outPWM)
-// translate a desired servo position expressed in degrees to a PWM number to feed the servo
-// if degrees is on a scale from 0 to 180, the center position is 90 degrees, specified in centerDeg
-// if degrees is on a scale from -90 to +90, the center position is 0, which goes in centerDeg
-// the equivalent PWM value is returned in integer parameter outPWM
-// 
-// using a horn with 24 positions allows positioning +/- 15 degrees
-// using a 25 poistion horn with reversing allows an accuracy of +/- 7.5 degrees
-//
-// At this level of accuracy, we can treat the current servo motors as identical,
-// all with North = 300, East = 115, and West = 486
-//
-// The servos aren't perfectly linear, and the PWM value may be off by as much as 3.9,
-// which is equivalent to a maximum error of less than 2 degrees
-{
-   // range check the desired degrees value
-   if(degrees < centerDeg - 90) {degrees = centerDeg - 90;};
-   if(degrees > centerDeg + 90) {degrees = centerDeg + 90;};
 
-   // formula fits a line to two measured data points (x=degrees, y=PWM) with the points
-   //   selected to minimize overall errors: (24,160) (166,460)
-   // formula is based on  y = M * x + b
-   //    where M is the slope, (delta Y)/(delta X)   for 2 selected points
-   //    b is the y intercept, derived by substituting a selected point into above formula after slope is known
-   
-   outPWM = (degrees - (centerDeg-90)) * 300 / 142 + 109.3;
-
-} // mapDegToPWM
 
 /**
  * @brief Followed this tutorial: https://diyi0t.com/servo-motor-tutorial-for-arduino-and-esp8266/
