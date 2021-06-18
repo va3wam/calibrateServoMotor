@@ -1,14 +1,14 @@
 # PlatformIO
-*.pio*
-*.pio/build/*
-*platformio.ini
+.pio*
+.pio/build/*
+platformio.ini
 
 # Visual Studio Code
-*.vscode/.browse.c_cpp.db*
-*.vscode/c_cpp_properties.json
-*.vscode/launch.json
-*.vscode/extensions.json
-*.vscode/ipch
+.vscode/.browse.c_cpp.db*
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/extensions.json
+.vscode/ipch
 
 # Build
 *output.map
