@@ -1,0 +1,23 @@
+	send("fg,0,0")                   // clear any previous flow
+	send("flow,10,-12,-8,1000,2")     // neutral
+	send("flow,10,2,8,1000,2")        // vrtical toe lift to y=0
+	send("flow,10,-12,8,1000,2")
+	send("flow,10,-12,-8,1000,2")
+	send("flow,10,2,-8,1000,2")
+	
+	send("fg,0,0")               // clear any previous flow
+	send("flow,0,0,0,500,1")     // neutral
+	send("flow,0,-45,45,500,1")
+	send("flow,-45,45,80,500,1")
+	send("flow,-45,-45,80,500,1")
+	send("flow,45,-45,80,500,1")
+	send("flow,45,45,80,500,1")
+	send("flow,0,0,0,1000,1")
+	send("flow,0,0,0,1000,1")
+	    send("flow,45,-45,30,1000,1")
+	send("flow,45,0,20,1000,1")
+	send("flow,22,0,10,1000,1")
+	send("flow,0,0,0,1000,1")
+		send("flow,-22,0,10,1000,1")
+	send("flow,-45,0,20,1000,1")
+	send("flow,0,-45,-45,1000,1")
