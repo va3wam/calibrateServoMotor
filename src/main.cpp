@@ -49,6 +49,7 @@
 #include <Adafruit_PWMServoDriver.h> // https://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library.
 #include <aaMqtt.h> // https://github.com/theAgingApprentice/aaMqtt. Store values that persist past reboot.
 #include <aaFormat.h> // 
+#include <main.h>     // routine call sequence definitions to allow putting them anywhere in source file
 
 /**
  * Define global objects.
@@ -69,12 +70,13 @@ aaFormat format;
 #define LED 2   // gpio for onboad red led nxt to power led
 
 // quick and dirty easily typed debug commands
-   #define spr(x) Serial.print(x)
+   #define spr(x) Serial.print(x);
    #define sprs(x) Serial.print(x); Serial.print(" ");
-   #define spr2(x,y) Serial.print(x); Serial.print(y)
-   #define spl(x) Serial.println(x)
-   #define sptv(x,y) Serial.print(x);Serial.print(y)
-   #define sptvl(x,y) Serial.print(x);Serial.println(y)
+   #define spr2(x,y) Serial.print(x); Serial.print(" "); Serial.print(y);
+   #define spr2l(x,y) Serial.print(x); Serial.print(" "); Serial.println(y);
+   #define spr3(x,y,z) Serial.print(x); Serial.print(" "); Serial.print(y); Serial.print(" "); Serial.print(z);
+   #define spr3l(x,y,z) Serial.print(x); Serial.print(" "); Serial.print(y); Serial.print(" "); Serial.println(z);
+   #define spl(x) Serial.println(x);
    #define sp Serial.print(" ");
    #define nl Serial.println();
 
@@ -153,14 +155,17 @@ float f_frame = 0;            // frame number, up to f_framesPerPosn, between po
 float f_deltaHip = 0;         // global to kep the compiler happy
 float f_deltaKnee = 0;
 float f_deltaAnkle = 0;
-float f_msecPerFrame = 25;      // time in milliseconds between frames, i.e. servo moves
-float f_framesPerPosn = 40;    // this is now calculated on the fly from position duration and f_msecPerFrame
+float f_msecPerFrame_default = 25;      // default time in milliseconds between frames, i.e. servo moves
+float f_msecPerFrame = 25;     // time in milliseconds between frames, i.e. servo moves, as set by FG command
+float f_framesPerPosn = 0;     // this is now calculated on the fly from position duration and f_msecPerFrame
 float f_cx, f_cy, f_cz;        // coordinates for a converted position. see anglesToCoords()
 float f_angH, f_angK, f_angA;  // angles for a converted position. f_ah means angle for hip. see coordsToAngles()
 float f_tx, f_ty, f_tz, f_th, f_tk, f_ta;  // temporary variables for (x,y,z) and hip,knee,ankle
 float f_Ux, f_Uy;              // toe position when rotated into xy plane
 float f_lastHa, f_lastKa, f_lastAa;  //remember last position as angles in flow to calculate next deltas
 float f_lastHc, f_lastKc, f_lastAc;  //remember last position as coords in flow to calculate next deltas
+float f_test;                       // for .h file testing
+int f_cycles;                    // number of times to repeat flow. set in flow_go command
 
 /**
  * @brief ISR for PWM signal from PCA9685.
@@ -238,9 +243,9 @@ void coordsToAngles(float x, float y, float z)
    f_Ux = (x*cos(-f_angH/180*PI) - z*sin(-f_angH/180*PI));
    f_Uy = y;   // the rotation doesn't change the y value
    // spreadsheet: =(E7*COS(-I7/180*PI()) - G7*SIN(-I7/180*PI()))
-spr("`coordsToAngles args: "); spr(x); sp; spr(y); sp; spr(z); nl;
-spr("`  f_angH = "); spr(f_angH); nl;
-spr("`  f_Ux = "); spl(f_Ux);
+// spr("`coordsToAngles args: "); spr(x); sp; spr(y); sp; spr(z); nl;
+//spr("`  f_angH = "); spr(f_angH); nl;
+//spr("`  f_Ux = "); spl(f_Ux);
    // next we deduce where the ankle has rotated to in the xy plane
    // the scary math is explained in another document, but here's a summary:
    // -ankle lies on a circle with radius 7.5 centred on knee servo
@@ -258,7 +263,7 @@ spr("`  f_Ux = "); spl(f_Ux);
    float f_QA = 1+(25-20*f_Ux+4*f_Ux*f_Ux)/(4*y*y);
    float f_QB = -5+(10*(-71+f_Ux*f_Ux+y*y) -4*((-71+f_Ux*f_Ux+y*y)*f_Ux))/(4*y*y);
    float f_QC = -50+( (-71.0+f_Ux*f_Ux+y*y)*(-71.0+f_Ux*f_Ux+y*y)) / (4*y*y);
-spr("`Quad coeffs: "); spr(f_QA); sp; spr(f_QB); sp; spl(f_QC);
+//spr("`Quad coeffs: "); spr(f_QA); sp; spr(f_QB); sp; spl(f_QC);
 
    // here comes the quadratic formula, which produces two possible solutions due to the +/-
    //  we'll comput them both, then make a choice based on robot limitations
@@ -266,7 +271,7 @@ spr("`Quad coeffs: "); spr(f_QA); sp; spr(f_QB); sp; spl(f_QC);
    float f_Ax, f_Ay, f_AxPlus, f_AxMinus, f_AyPlus, f_AyMinus;    // coordinates of ankle, rotated into xy plane
    float f_determinant;      // detrminant in quadratic solution - must be >= 0
    f_determinant = round((f_QB*f_QB-4*f_QA*f_QC)*10000)/10000;
-spr("`f_determinant= "); spl(f_determinant);
+//spr("`f_determinant= "); spl(f_determinant);
    if(f_determinant < 0) { spl("`========= negative determinant =======");}
    f_AxPlus  = (-1*f_QB + sqrt(f_determinant)) /(2*f_QA);
    f_AxMinus = (-1*f_QB - sqrt(f_determinant)) /(2*f_QA);
@@ -292,9 +297,9 @@ spr("`f_determinant= "); spl(f_determinant);
 //   }
    // there are still some unlikely edge cases needing attention, such as h=0, k=-44, a=75
 
-spr("`AxPlus,AyPlus= "); spr(f_AxPlus); sp; spl(f_AyPlus);
-spr("`AxMinus,AyMinus= "); spr(f_AxMinus); sp; spl(f_AyMinus);
-spr("`Ax,Ay= "); spr(f_Ax); sp; spl(f_Ay);
+//spr("`AxPlus,AyPlus= "); spr(f_AxPlus); sp; spl(f_AyPlus);
+//spr("`AxMinus,AyMinus= "); spr(f_AxMinus); sp; spl(f_AyMinus);
+//spr("`Ax,Ay= "); spr(f_Ax); sp; spl(f_Ay);
 
 // think following stuff is obsolete, but keeping the formulas
    // get y by substituting x into a previous equation, again dependent on sign of y
@@ -329,9 +334,9 @@ spr("`Ax,Ay= "); spr(f_Ax); sp; spl(f_Ay);
       f_angA = f_R + 90 +f_angK - 17;
    }  // Uy <0
    
-spr("`  ang H= "); spl(f_angH);  
-spr("`  ang K= "); spl(f_angK);  
-spr("`  ang A= "); spl(f_angA);  
+//spr("`  ang H= "); spl(f_angH);  
+//spr("`  ang K= "); spl(f_angK);  
+//spr("`  ang A= "); spl(f_angA);  
     
 
 
@@ -351,7 +356,7 @@ bool processCmd(String payload)
    int argEnd = ucPayload.indexOf(",",argStart);  // position of comma at end of cmd
    while(argEnd >= 0)           // .indexOf returns -1 if no string found
    {  arg[argN] = ucPayload.substring(argStart,argEnd);  // extract the current argument
-      argN ++ ;                 // advance thr argument counter
+      argN ++ ;                 // advance the argument counter
       argStart = argEnd + 1;    // next arg starts after previous arg's delimiting comma
       argEnd = ucPayload.indexOf(",",argStart);  // find next arg's delimiting comma
    }           
@@ -552,10 +557,11 @@ spr(" args: "); spr(f_tx); sp; spr(f_ty); sp; spl(f_tz);
 // the FLOW command builds arrays describing the desired movement
 // the FLOW_GO command starts the movement and controls repetitions, resets, etc
 //
-// format: FLOW_GO, <action>,<cycles>
+// format: FLOW_GO, <action>,<cycles>,<msecPerFrame>
 // action: 1 - start the flow currently defined in the flow arrays
 //         0 - reset the current flow, and empty the flow arrays
 // cycles: number of times to repeat the flow, 0 or 1 mean once
+// msecPerFrame: duration of each frame (fraction of a position) in millis. this determines f_framesPerPosn
 
    if(cmd == "FLOW_GO" || cmd == "FG")
    {
@@ -566,24 +572,33 @@ spr(" args: "); spr(f_tx); sp; spr(f_ty); sp; spl(f_tz);
          f_active = 0;
          return true;
       }
-      else
-      {  if(f_action == 1)                // 1 means start up the currently define flow
-         {  if(f_count == 0)              // is there a flow defined to run?
-            {  Serial.println("<flow_go>: tried to run flow, but none defined");
-               return false;
-            }
-            else
-            {  f_flowing = true;         // enable timer driven movement
-               f_active = 0;             // start at beginning of flow arrays
-               return true;              // actual movement is in loop, which calls do_flow(), right below
-            }
-         } // if action = 1
-         else
-         {   Serial.println("<flow_go>: invalid action in MQTT flow_go command");
-             return false;
+      if(f_action == 1)                // 1 means start up the currently define flow
+      {
+         if(f_count == 0)              // is there a flow defined to run?
+         {  Serial.println("<flow_go>: tried to run flow, but none defined");
+            return false;
          }
-      } // if action = 0 else
- 
+         f_flowing = 1;                // we're now executing a flow
+         f_active = 0;                 // starting at the 0th entry in the flow arrays
+
+         f_cycles = 1;                 // default is one time through the flow
+         if( argN > 1)                 // if there were at least 2 numeric arguments for FG command
+         {
+            f_cycles = arg[2].toInt();  // second number is cycle count
+spr2l("cycles from command= ",f_cycles);
+            if(f_cycles < 1 || f_cycles > 20) {f_cycles = 1;}    // override invalid cycle counts
+         }
+         f_msecPerFrame = f_msecPerFrame_default;  // if not given in FG command, use the default
+         if(argN > 2)                  // if there were at least 3 numeric args to FG command
+         {                             // ... 3rd one is msecPerFrame
+            f_msecPerFrame = arg[3].toInt();  // 3rd number is millis per frame
+            if(f_msecPerFrame<10 || f_msecPerFrame>200) {f_msecPerFrame = f_msecPerFrame_default;}
+         }
+      } // if action = 1
+      else
+      {   Serial.println("<flow_go>: invalid action in MQTT flow_go command");
+          return false;
+      }
    return true;
    } // if cmd = flow_go
 
