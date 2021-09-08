@@ -60,15 +60,17 @@ void do_flow()          // called from loop if there's a flow executing that nee
          }
 //spr("`f_frameHip... = "); spr(f_frameHip); sp; spr(f_frameKnee); sp; spl(f_frameAnkle);
          // move servo's a fraction of the way to next position
-//         int f_time1 = millis();   // timstamp to measure PWM routine timing
+         int f_time1 = millis();   // timstamp to measure PWM routine timing
          pwm.setPWM(servoMotor[1].driverPort, SERVO_START_TICK, mapDegToPWM(f_frameHip, 0)); // Hip
+         int f_time2 = millis();
          pwm.setPWM(servoMotor[2].driverPort, SERVO_START_TICK, mapDegToPWM(f_frameKnee, 0)); // Knee
+         int f_time3 = millis();
          pwm.setPWM(servoMotor[3].driverPort, SERVO_START_TICK, mapDegToPWM(f_frameAnkle, 0)); // Ankle 
-//         int f_time2 = millis();   // second timstamp to capture the delta
-//         spr(" PWM timing: "); spr3l(f_time1, f_time2, f_time2 - f_time1)
+         int f_time4 = millis();  
+         spr(" PWM timing: "); spr3(f_time1, f_time2, f_time3); sp; spl(f_time4);
 
 // spl("`------------------------------------------------------");
-spr("`active,frame,frame angles: ");sprs(f_active);sprs(f_frame);  sprs(f_frameHip); sprs(f_frameKnee); spl(f_frameAnkle);
+// spr("`active,frame,frame angles: ");sprs(f_active);sprs(f_frame);  sprs(f_frameHip); sprs(f_frameKnee); spl(f_frameAnkle);
 
          f_frame = f_frame + 1 ;           // on to next frame within this position
 // spr2("`f_frame=",f_frame); spr2(",  f_active=",f_active); nl;
