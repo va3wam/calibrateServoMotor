@@ -49,6 +49,7 @@
 #include <Adafruit_PWMServoDriver.h> // https://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library.
 #include <aaMqtt.h> // https://github.com/theAgingApprentice/aaMqtt. Store values that persist past reboot.
 #include <aaFormat.h> // 
+#include <main.h>     // routine call sequence definitions to allow putting them anywhere in source file
 
 /**
  * Define global objects.
@@ -66,13 +67,16 @@ aaFormat format;
 #define SERVO_START_NUM 1 // First servo cnnected to pin 1
 #define SERVO_CNT 4 // Number of servos connected
 
+#define LED 2   // gpio for onboad red led nxt to power led
+
 // quick and dirty easily typed debug commands
-   #define spr(x) Serial.print(x)
+   #define spr(x) Serial.print(x);
    #define sprs(x) Serial.print(x); Serial.print(" ");
-   #define spr2(x,y) Serial.print(x); Serial.print(y)
-   #define spl(x) Serial.println(x)
-   #define sptv(x,y) Serial.print(x);Serial.print(y)
-   #define sptvl(x,y) Serial.print(x);Serial.println(y)
+   #define spr2(x,y) Serial.print(x); Serial.print(" "); Serial.print(y);
+   #define spr2l(x,y) Serial.print(x); Serial.print(" "); Serial.println(y);
+   #define spr3(x,y,z) Serial.print(x); Serial.print(" "); Serial.print(y); Serial.print(" "); Serial.print(z);
+   #define spr3l(x,y,z) Serial.print(x); Serial.print(" "); Serial.print(y); Serial.print(" "); Serial.println(z);
+   #define spl(x) Serial.println(x);
    #define sp Serial.print(" ");
    #define nl Serial.println();
 
@@ -136,9 +140,9 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED; // Mutex to prevent ISR and mai
 // Each index value represents one position in the series of movements
 
 int f_count = 0;              // number of entries currently in the flow arrays
-float f_hip[100];              // hip angle of this position, in degrees
-float f_knee[100];
-float f_ankle[100];
+float f_x_hip[100];           // hip angle of this position, in degrees, or x coordinate if style=2
+float f_y_knee[100];
+float f_z_ankle[100];
 float f_msecs[100];            // duration of this movement, in millis. basically, speed
 int f_style[100];              // type of motion. initially, just linear angle changes
 //  1 basic linear change from before angle to after angle for each joint
@@ -151,11 +155,17 @@ float f_frame = 0;            // frame number, up to f_framesPerPosn, between po
 float f_deltaHip = 0;         // global to kep the compiler happy
 float f_deltaKnee = 0;
 float f_deltaAnkle = 0;
-float f_framesPerPosn = 40;    // 20 seemed a bit jerky. maybe an MQTT command to control it? part of flow?
+float f_msecPerFrame_default = 25;      // default time in milliseconds between frames, i.e. servo moves
+float f_msecPerFrame = 25;     // time in milliseconds between frames, i.e. servo moves, as set by FG command
+float f_framesPerPosn = 0;     // this is now calculated on the fly from position duration and f_msecPerFrame
 float f_cx, f_cy, f_cz;        // coordinates for a converted position. see anglesToCoords()
 float f_angH, f_angK, f_angA;  // angles for a converted position. f_ah means angle for hip. see coordsToAngles()
 float f_tx, f_ty, f_tz, f_th, f_tk, f_ta;  // temporary variables for (x,y,z) and hip,knee,ankle
-
+float f_Ux, f_Uy;              // toe position when rotated into xy plane
+float f_lastHa, f_lastKa, f_lastAa;  //remember last position as angles in flow to calculate next deltas
+float f_lastHc, f_lastKc, f_lastAc;  //remember last position as coords in flow to calculate next deltas
+float f_test;                       // for .h file testing
+int f_cycles;                    // number of times to repeat flow. set in flow_go command
 
 /**
  * @brief ISR for PWM signal from PCA9685.
@@ -230,9 +240,12 @@ void coordsToAngles(float x, float y, float z)
    // now reduce to a 2D problem by rotating leg into xy plane (around y axis)
    // resulting in new x coordinate: Ux. ( Uy stays same as original y, and new Uz = 0)
    // using standard formula for rotating a 2D vector with angle opposite to hip angle...
-   float f_Ux = (x*cos(-f_angH/180*PI) - z*sin(-f_angH/180*PI));
+   f_Ux = (x*cos(-f_angH/180*PI) - z*sin(-f_angH/180*PI));
+   f_Uy = y;   // the rotation doesn't change the y value
    // spreadsheet: =(E7*COS(-I7/180*PI()) - G7*SIN(-I7/180*PI()))
-spr(" Ux= "); spl(f_Ux);
+// spr("`coordsToAngles args: "); spr(x); sp; spr(y); sp; spr(z); nl;
+//spr("`  f_angH = "); spr(f_angH); nl;
+//spr("`  f_Ux = "); spl(f_Ux);
    // next we deduce where the ankle has rotated to in the xy plane
    // the scary math is explained in another document, but here's a summary:
    // -ankle lies on a circle with radius 7.5 centred on knee servo
@@ -250,31 +263,80 @@ spr(" Ux= "); spl(f_Ux);
    float f_QA = 1+(25-20*f_Ux+4*f_Ux*f_Ux)/(4*y*y);
    float f_QB = -5+(10*(-71+f_Ux*f_Ux+y*y) -4*((-71+f_Ux*f_Ux+y*y)*f_Ux))/(4*y*y);
    float f_QC = -50+( (-71.0+f_Ux*f_Ux+y*y)*(-71.0+f_Ux*f_Ux+y*y)) / (4*y*y);
-spr("Quad coeffs: "); spr(f_QA); sp; spr(f_QB); sp; spl(f_QC);
+//spr("`Quad coeffs: "); spr(f_QA); sp; spr(f_QB); sp; spl(f_QC);
 
-   // here comes the quadratic formula, choosing +/- based on the sign of y
-   float f_Ax, f_Ay;            // coordinates of ankle, rotated into xy plane
-   if(y<0)   {f_Ax = (-1*f_QB + sqrt(f_QB*f_QB-4*f_QA*f_QC)) /(2*f_QA);}
-   if(y>=0)  {f_Ax = (-1*f_QB - sqrt(f_QB*f_QB-4*f_QA*f_QC)) /(2*f_QA);}
-spr("Ax= "); spl(f_Ax);
+   // here comes the quadratic formula, which produces two possible solutions due to the +/-
+   //  we'll comput them both, then make a choice based on robot limitations
+   //  generally, we want the one where the ankle is the highest, maximizing Ay
+   float f_Ax, f_Ay, f_AxPlus, f_AxMinus, f_AyPlus, f_AyMinus;    // coordinates of ankle, rotated into xy plane
+   float f_determinant;      // detrminant in quadratic solution - must be >= 0
+   f_determinant = round((f_QB*f_QB-4*f_QA*f_QC)*10000)/10000;
+//spr("`f_determinant= "); spl(f_determinant);
+   if(f_determinant < 0) { spl("`========= negative determinant =======");}
+   f_AxPlus  = (-1*f_QB + sqrt(f_determinant)) /(2*f_QA);
+   f_AxMinus = (-1*f_QB - sqrt(f_determinant)) /(2*f_QA);
 
+   // substituting back in previous equation to get correcponding Ay valus
+   f_AyPlus  = ((-71 +f_Ux*f_Ux +f_Uy*f_Uy) -f_AxPlus *(-5+2*f_Ux)) / (2*y);
+   f_AyMinus = ((-71 +f_Ux*f_Ux +f_Uy*f_Uy) -f_AxMinus*(-5+2*f_Ux)) / (2*y);
+   
+   // initially, guess that we're using the (Ax,Ay) pair with the "+" in quadratic solution
+   f_Ax = f_AxPlus;
+   f_Ay = f_AyPlus;
+
+   // but swap if the other coordinates have a higher Y value, and the X value is on positive side of knee,
+   // .. which means knee can reach it without exceeding 90 degrees  
+   if(f_AyMinus > f_AyPlus && f_AxMinus >= 2.5)
+   {  f_Ax = f_AxMinus;
+      f_Ay = f_AyMinus;
+   }
+   // however, if that puts x to the -ve side of knee, where ankle can't go, pick the other case
+//   if(f_Ax < 2.5)
+//   {  f_Ax = f_AxPlus;
+//      f_Ay = f_AyPlus;
+//   }
+   // there are still some unlikely edge cases needing attention, such as h=0, k=-44, a=75
+
+//spr("`AxPlus,AyPlus= "); spr(f_AxPlus); sp; spl(f_AyPlus);
+//spr("`AxMinus,AyMinus= "); spr(f_AxMinus); sp; spl(f_AyMinus);
+//spr("`Ax,Ay= "); spr(f_Ax); sp; spl(f_Ay);
+
+// think following stuff is obsolete, but keeping the formulas
    // get y by substituting x into a previous equation, again dependent on sign of y
-    if(y>0)   {f_Ay = -1*((-71+f_Ux*f_Ux+y*y) - f_Ax*(-5+2*f_Ux))/(2*y);}
-    if(y<=0)  {f_Ay =    ((-71+f_Ux*f_Ux+y*y) - f_Ax*(-5+2*f_Ux))/(2*y);}
-spr("Ay= "); spl(f_Ay);
+//    if(y>0)   {f_Ay = -1*((-71+f_Ux*f_Ux+y*y) - f_Ax*(-5+2*f_Ux))/(2*y);}
+//    if(y<=0)  {f_Ay =    ((-71+f_Ux*f_Ux+y*y) - f_Ax*(-5+2*f_Ux))/(2*y);}
+
 
     // now that we know where the ankle is, we can finally work on the angles
+    // the knee is easy since we defind the ankle position above
 
-    // the math isn't quite right yet, and there are some anomalies when:
-    //  y>0  i.e. the toe is higher than the knee
-    //  x<0  i.e. the toe is under the bot's body.
-    // avoid these cases until I can figure out the math
+    f_angK = -1* asin( f_Ay / 7.5) / PI * 180;    
 
-    f_angK = -1* asin( f_Ay / 7.5) / PI * 180;
-    f_angA = asin( (f_Ux - f_Ax)/11) / PI * 180 + f_angK - 17;
+// there are 4 possible cases for ankle position, with different calculations for A angle
+// 1) Ux>2.5, Uy<0  // the normal case, toe below knee
+// 2) Ux>2.5, Uy>=0  // still normal, toe above knee
+// 3) Ux<2.5, Uy>0  // unreachable if servo angle limited to 90 degrees
+// 4) Ux<2.5, Uy=<0  // toe is underneath robot
 
+// should put in defenses for unreasonable angles being returned
+
+// for cases 1 and 4
+   if(f_Uy < 0)
+   {
+      float f_P = asin((f_Ux - f_Ax)/11) / PI *180;      // can only explain this with a diagram
+      f_angA = f_P + f_angK - 17;
+   }  // Uy <0
+
+// for cases 2, and impossible 3
+   if(f_Uy >= 0)
+   {
+      float f_R = asin((f_Uy - f_Ay)/11) / PI *180;      // can only explain this with a diagram
+      f_angA = f_R + 90 +f_angK - 17;
+   }  // Uy <0
    
-
+//spr("`  ang H= "); spl(f_angH);  
+//spr("`  ang K= "); spl(f_angK);  
+//spr("`  ang A= "); spl(f_angA);  
     
 
 
@@ -294,7 +356,7 @@ bool processCmd(String payload)
    int argEnd = ucPayload.indexOf(",",argStart);  // position of comma at end of cmd
    while(argEnd >= 0)           // .indexOf returns -1 if no string found
    {  arg[argN] = ucPayload.substring(argStart,argEnd);  // extract the current argument
-      argN ++ ;                 // advance thr argument counter
+      argN ++ ;                 // advance the argument counter
       argStart = argEnd + 1;    // next arg starts after previous arg's delimiting comma
       argEnd = ucPayload.indexOf(",",argStart);  // find next arg's delimiting comma
    }           
@@ -414,7 +476,7 @@ bool processCmd(String payload)
       pwm.setPWM(servoMotor[3].driverPort, SERVO_START_TICK, mapDegToPWM(f_ta, 0)); // Ankle 
 
       anglesToCoords(f_th, f_tk, f_ta);
-      spr(" coords: "); spr(f_cx); sp; spr(f_cy); sp; spl(f_cz);
+      spr("` coords: "); spr(f_cx); sp; spr(f_cy); sp; spl(f_cz);
 
       // worst case is moving 90 degrees at .17 sec per 60 degrees, so ...
       delay(510);  // wait for moves to complete
@@ -424,8 +486,7 @@ bool processCmd(String payload)
 
    if(cmd == "GOTO_COORDS" || cmd == "GC")
    // format: goto_coords,<x value>,<y value>,<z value>
-   //     for now, avoid y>0 and x<0 until I can fix some math
-   // example: gc, 13.22, -10.52,0    would put robot in normal neutral stance
+     // example: gc, 13.22, -10.52,0    would put robot in normal neutral stance
    {
       Serial.println("start goto_coords command");
  
@@ -440,12 +501,10 @@ spr(" args: "); spr(f_tx); sp; spr(f_ty); sp; spl(f_tz);
 
       // move the servos in parallel at top speed to these angles
       
-/* test first - there are still bugs in the math
       pwm.setPWM(servoMotor[1].driverPort, SERVO_START_TICK, mapDegToPWM(f_angH, 0)); // Hip
       pwm.setPWM(servoMotor[2].driverPort, SERVO_START_TICK, mapDegToPWM(f_angK, 0)); // Knee
       pwm.setPWM(servoMotor[3].driverPort, SERVO_START_TICK, mapDegToPWM(f_angA, 0)); // Ankle 
-*/
-      spr(" angles: "); spr(f_angH); sp; spr(f_angK); sp; spl(f_angA);
+      spr("` angles: "); spr(f_angH); sp; spr(f_angK); sp; spl(f_angA);
 
       // worst case is moving 90 degrees at .17 sec per 60 degrees, so ...
       delay(510);  // wait for moves to complete
@@ -459,25 +518,33 @@ spr(" args: "); spr(f_tx); sp; spr(f_ty); sp; spl(f_tz);
 // the flow_go command starts the movement and controls repetitions, resets, etc
 
    if(cmd == "FLOW" || cmd == "FL")
-   // format: flow,<hip angle>,<knee angle>,<ankle angle>, <duration in msec>, <style>
-   //       with all angles in degrees, center (north) = 0
+   // there are 2 command formats, defined by the style parameter:
+   // style =1 is based on servo angles...
+   //    format: flow,<hip angle>,<knee angle>,<ankle angle>, <duration in msec>, <style=1>
+   //            with all angles in degrees, center (north) = 0
+   // style = 2 is based on (x,y,z) coordinates
+   //    format: flow,<X value>,<y value>,<z value>, <duration in msec>, <style=2>
+   //
    // action: - save this position in the flow arrays, to be part of the motion initiated by flow_go command
    //         - duration (ignored for first position in a flow) is elapsed time to get to this position, in milliseconds
    //           (it basically controls the speed of movement)
-   //  style: - 1 is linear transition from start fgangle to end angle, for each joint
+   //  style: - 1 is linear transition from start angle to end angle, for each joint
    //         - 2 is linear progress along a line from starting position (equivalent (x,y,z)) to end position
    //         - style is ignored for first position
-   // example: fl,0,0,0,99,1           would put robot in normal neutral stance
-   //          fl,0,-45,45,1000,1      then move smoothly to "peeing on a tree" stance
+   // example: style 1:  fl,0,0,0,99,1           would put robot in normal neutral stance
+   //                    fl,0,-45,45,1000,1      then move smoothly to "peeing on a tree" stance
+   //
+   //          style 2:  fl,10,-8.5,0,99,2       would put robot in normal neutral stance
+   //                    fl,18.8,5.3,0,1000,2    moves to pee on a tree stance
 
    {
       Serial.println("start flow command");
  
       // copy position description from MQTT flow command to flow arrays
       // f_count starts at 0, which we use to store first position
-      f_hip[f_count] = arg[1].toFloat();
-      f_knee[f_count] = arg[2].toFloat();
-      f_ankle[f_count] = arg[3].toFloat();
+      f_x_hip[f_count] = arg[1].toFloat();  // depending on style, this is either hip angle or x coordinate
+      f_y_knee[f_count] = arg[2].toFloat();
+      f_z_ankle[f_count] = arg[3].toFloat();
       f_msecs[f_count] = arg[4].toFloat();
       f_style[f_count] = arg[5].toInt();
 
@@ -490,10 +557,11 @@ spr(" args: "); spr(f_tx); sp; spr(f_ty); sp; spl(f_tz);
 // the FLOW command builds arrays describing the desired movement
 // the FLOW_GO command starts the movement and controls repetitions, resets, etc
 //
-// format: FLOW_GO, <action>,<cycles>
+// format: FLOW_GO, <action>,<cycles>,<msecPerFrame>
 // action: 1 - start the flow currently defined in the flow arrays
 //         0 - reset the current flow, and empty the flow arrays
 // cycles: number of times to repeat the flow, 0 or 1 mean once
+// msecPerFrame: duration of each frame (fraction of a position) in millis. this determines f_framesPerPosn
 
    if(cmd == "FLOW_GO" || cmd == "FG")
    {
@@ -504,24 +572,33 @@ spr(" args: "); spr(f_tx); sp; spr(f_ty); sp; spl(f_tz);
          f_active = 0;
          return true;
       }
-      else
-      {  if(f_action == 1)                // 1 means start up the currently define flow
-         {  if(f_count == 0)              // is there a flow defined to run?
-            {  Serial.println("<flow_go>: tried to run flow, but none defined");
-               return false;
-            }
-            else
-            {  f_flowing = true;         // enable timer driven movement
-               f_active = 0;             // start at beginning of flow arrays
-               return true;              // actual movement is in loop
-            }
-         } // if action = 1
-         else
-         {   Serial.println("<flow_go>: invalid action in MQTT flow_go command");
-             return false;
+      if(f_action == 1)                // 1 means start up the currently define flow
+      {
+         if(f_count == 0)              // is there a flow defined to run?
+         {  Serial.println("<flow_go>: tried to run flow, but none defined");
+            return false;
          }
-      } // if action = 0 else
- 
+         f_flowing = 1;                // we're now executing a flow
+         f_active = 0;                 // starting at the 0th entry in the flow arrays
+
+         f_cycles = 1;                 // default is one time through the flow
+         if( argN > 1)                 // if there were at least 2 numeric arguments for FG command
+         {
+            f_cycles = arg[2].toInt();  // second number is cycle count
+spr2l("cycles from command= ",f_cycles);
+            if(f_cycles < 1 || f_cycles > 20) {f_cycles = 1;}    // override invalid cycle counts
+         }
+         f_msecPerFrame = f_msecPerFrame_default;  // if not given in FG command, use the default
+         if(argN > 2)                  // if there were at least 3 numeric args to FG command
+         {                             // ... 3rd one is msecPerFrame
+            f_msecPerFrame = arg[3].toInt();  // 3rd number is millis per frame
+            if(f_msecPerFrame<10 || f_msecPerFrame>200) {f_msecPerFrame = f_msecPerFrame_default;}
+         }
+      } // if action = 1
+      else
+      {   Serial.println("<flow_go>: invalid action in MQTT flow_go command");
+          return false;
+      }
    return true;
    } // if cmd = flow_go
 
@@ -531,102 +608,11 @@ spr(" args: "); spr(f_tx); sp; spr(f_ty); sp; spl(f_tz);
    return false;
 } // processCmd()
 
+ #include <m$do_flow.cpp>
 
-// do_flow is triggered by the MQTT flow_go command, which sets f_flowing to true
-// f_active is initially zero, which initiates various setup activities on first do_flow entry
-// in general case, do_flow executes a small servo movement on all 3 servos, at a calculated time interval
 
-void do_flow()          // called from loop if there's a flow executing that needs attention
-{
-   float f_frameHip, f_frameKnee, f_frameAnkle;
 
-   if(f_active > 0)     // we're past initialization, and working thru angle changes, a frame at a time
-   /*  Need a diagram to visualize frames between positions
-
-                    f_active  f_frame  flow arrays
-   1st position         1        1      [0] +
-      (50 ms)           1        1
-      frame 1           1       1>2
-      (50 ms)           1        2
-      frame 2           1       2>3
-    ...
-      frame 19          1       19>20
-      (50 ms)           1        20
-    frame 20 = 2nd pos  2       20>1     [1] +
-
-   */
-   {
-      if(millis() >= f_nextTime )       // if we've waited until next frame time
-      {  
-         f_frameHip = f_hip[f_active-1] + (f_frame/f_framesPerPosn) * f_deltaHip;   // figure servo positions
-         f_frameKnee = f_knee[f_active-1] + (f_frame/f_framesPerPosn) * f_deltaKnee;
-         f_frameAnkle = f_ankle[f_active-1] + (f_frame/f_framesPerPosn) * f_deltaAnkle;
-
-         // move servo's a fraction of the way to next position
-         pwm.setPWM(servoMotor[1].driverPort, SERVO_START_TICK, mapDegToPWM(f_frameHip, 0)); // Hip
-         pwm.setPWM(servoMotor[2].driverPort, SERVO_START_TICK, mapDegToPWM(f_frameKnee, 0)); // Knee
-         pwm.setPWM(servoMotor[3].driverPort, SERVO_START_TICK, mapDegToPWM(f_frameAnkle, 0)); // Ankle 
- 
-//////////// sprs(f_active);sprs(f_frame);  sprs(f_frameHip); sprs(f_frameKnee); spl(f_frameAnkle);
-
-         f_frame = f_frame + 1 ;           // on to next frame within this position
-//////////// spr2("f_frame=",f_frame); spr2(",  f_active=",f_active); nl;
-
-         f_nextTime = millis() + int(f_msecs[1] / f_framesPerPosn +.5);
-///////////// sprs("times/ac>0: "); sprs(millis()); spl(f_nextTime);
-         if(f_frame > f_framesPerPosn)       // did we finish all frame for this position?
-         {
-            // yup, so we must be sitting at the next position. reorganize for next set of frames
-            f_active ++ ;
-            if(f_active < f_count )
-            {                          // haven't run out of positions yet, so do frames out to the next one
-               f_deltaHip = f_hip[f_active] - f_hip[f_active-1];   // figure the angle to be travelled for hip to next position
-               f_deltaKnee = f_knee[f_active] - f_knee[f_active-1];
-               f_deltaAnkle = f_ankle[f_active] - f_ankle[f_active-1];
-////////////////sprs("deltas-2: "); sprs(f_deltaHip); sprs(f_deltaKnee); spl(f_deltaAnkle);               
-
-               f_frame = 1;     // starting a new set of frames
-//////////////// spl("just reset f_frame");
-               f_nextTime = millis() + int(f_msecs[f_active] / f_framesPerPosn +.5);   //get speed info from next position
-
-            }
-            else    // ran out of positions. do we need to do more cycles?
-            {
-                  // cycles not implemented. stop after first
-                  f_nextTime = 0;         // stop any further frame processing from moving servos
-                  f_flowing = false;      // exit from flow processing
-            }
-
-         } // if f_frame > f_framesPerPosn
-      } //if millis > f_nextTime
-   } // if f_active > 0
-
-   if(f_active == 0 )         // if this is first call to do_flow after MQTT flow_go command...
-   {
-      // move the servos in parallel at top speed to angles in first array entry
-      pwm.setPWM(servoMotor[1].driverPort, SERVO_START_TICK, mapDegToPWM(f_hip[0], 0)); // Hip
-      pwm.setPWM(servoMotor[2].driverPort, SERVO_START_TICK, mapDegToPWM(f_knee[0], 0)); // Knee
-      pwm.setPWM(servoMotor[3].driverPort, SERVO_START_TICK, mapDegToPWM(f_ankle[0], 0)); // Ankle 
-      delay(510);          // worst case delay to let servos move
-///////////////// sptv("f_hip[0] ",f_hip[0]); sp; spr(f_knee[0]); sp; spl(f_ankle[0]);
-///////////////// sptv("f_hip[1] ",f_hip[1]); sp; spr(f_knee[1]); sp; spl(f_ankle[1]);
-      
-      f_deltaHip = f_hip[1] - f_hip[0];   // figure the angle to be travelled for hip to next position
-      f_deltaKnee = f_knee[1] - f_knee[0];
-      f_deltaAnkle = f_ankle[1] - f_ankle[0];
-
-///////////////// sprs("deltas: "); sprs(f_deltaHip); sprs(f_deltaKnee); spl(f_deltaAnkle);
-
-      // we're setting servos at f_framesPerPosn frames between positions.
-      // calculate initial time delay until 1st reposition, in rounded integer milliseconds
-      // and schedule next flow processing
-      f_nextTime = millis() + int(f_msecs[1] / f_framesPerPosn +.5);
-      sprs("times: "); sprs(millis()); spl(f_nextTime);
-      f_frame = 1;      // frame number we'll do next
-      f_active = 1;     // we're now working towards the position in index 1 of the flow arrays
-   } // if f_active = 0
-
-}// void do_flow
+// moving do_flow() to an include file called m$do_flow   where m$ identifies a module
 
 /**
  * @brief Followed this tutorial: https://diyi0t.com/servo-motor-tutorial-for-arduino-and-esp8266/
@@ -646,6 +632,8 @@ void setup()
    wifi.getUniqueName(uniqueNamePtr);
    Serial.print("<setup> Unique name = ");
    Serial.println(uniqueName);
+
+   pinMode(LED, OUTPUT);         // set up onboard LED on gpio 2 for error signalling
 
    #include <servoSettings.cpp>
 
@@ -774,6 +762,6 @@ void loop()
 
   if(f_flowing == true)     // are we executing a predefined flow between positions?
   {
-     do_flow();             // yes. caclulate and do next servo commands 
+     do_flow();             // yes. calculate and do next servo commands 
   }
 } // loop()
