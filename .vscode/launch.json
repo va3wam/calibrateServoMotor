@@ -29,6 +29,16 @@
             "projectEnvName": "esp32doit-devkit-v1",
             "toolchainBinDir": "C:/Users/DougElliott/.platformio/packages/toolchain-xtensa32/bin",
             "internalConsoleOptions": "openOnSessionStart"
+        },
+        {
+            "type": "platformio-debug",
+            "request": "launch",
+            "name": "PIO Debug (without uploading)",
+            "executable": "C:/Users/DougElliott/Documents/VisualStudioCode/PlatformIO/Projects/calibrateServoMotor/.pio/build/esp32doit-devkit-v1/firmware.elf",
+            "projectEnvName": "esp32doit-devkit-v1",
+            "toolchainBinDir": "C:/Users/DougElliott/.platformio/packages/toolchain-xtensa32/bin",
+            "internalConsoleOptions": "openOnSessionStart",
+            "loadMode": "manual"
         }
     ]
 }
